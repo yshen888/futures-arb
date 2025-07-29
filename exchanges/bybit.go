@@ -22,7 +22,7 @@ type BybitFuturesTrade struct {
 	} `json:"data"`
 }
 
-func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData) {
+func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
 	wsURL := "wss://stream.bybit.com/v5/public/linear"
 
 	for {
@@ -68,6 +68,14 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData) {
 						continue
 					}
 
+					// Normalize trade side (Bybit uses "Buy" and "Sell")
+					var side string
+					if trade.Side == "Buy" {
+						side = "buy"
+					} else {
+						side = "sell"
+					}
+
 					priceData := PriceData{
 						Symbol:    trade.Symbol,
 						Exchange:  "bybit_futures",
@@ -75,7 +83,17 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData) {
 						Timestamp: trade.Timestamp,
 					}
 
+					tradeData := TradeData{
+						Symbol:    trade.Symbol,
+						Exchange:  "bybit_futures",
+						Price:     price,
+						Quantity:  trade.Size,
+						Side:      side,
+						Timestamp: trade.Timestamp,
+					}
+
 					priceChan <- priceData
+					tradeChan <- tradeData
 				}
 			}
 		}

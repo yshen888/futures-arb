@@ -22,7 +22,7 @@ type HyperliquidTradeData struct {
 	Timestamp int64   `json:"time"`
 }
 
-func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData) {
+func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
 	wsURL := "wss://api.hyperliquid.xyz/ws"
 
 	for {
@@ -89,6 +89,14 @@ func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData) {
 					// Convert coin back to symbol format (BTC -> BTCUSDT)
 					symbol := trade.Coin + "USDT"
 
+					// Normalize trade side (Hyperliquid uses "A" for ask/sell, "B" for bid/buy)
+					var side string
+					if trade.Side == "B" {
+						side = "buy"
+					} else {
+						side = "sell"
+					}
+
 					priceData := PriceData{
 						Symbol:    symbol,
 						Exchange:  "hyperliquid_futures",
@@ -96,7 +104,17 @@ func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData) {
 						Timestamp: trade.Timestamp,
 					}
 
+					tradeData := TradeData{
+						Symbol:    symbol,
+						Exchange:  "hyperliquid_futures",
+						Price:     price,
+						Quantity:  trade.Size,
+						Side:      side,
+						Timestamp: trade.Timestamp,
+					}
+
 					priceChan <- priceData
+					tradeChan <- tradeData
 				}
 			}
 		}

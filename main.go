@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"futures-arbitrage-scanner/exchanges"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -20,20 +22,30 @@ type ArbitrageOpportunity struct {
 	Timestamp    int64   `json:"timestamp"`
 }
 
+type CVDTracker struct {
+	cvd   float64
+	mutex sync.RWMutex
+}
+
 type FuturesScanner struct {
 	prices       map[string]map[string]float64
 	pricesMutex  sync.RWMutex
+	cvdTrackers  map[string]map[string]*CVDTracker
+	cvdMutex     sync.RWMutex
 	wsClients    map[*websocket.Conn]bool
 	clientsMutex sync.RWMutex
 	upgrader     websocket.Upgrader
 	priceChan    chan exchanges.PriceData
+	tradeChan    chan exchanges.TradeData
 }
 
 func NewFuturesScanner() *FuturesScanner {
 	return &FuturesScanner{
-		prices:    make(map[string]map[string]float64),
-		wsClients: make(map[*websocket.Conn]bool),
-		priceChan: make(chan exchanges.PriceData, 1000),
+		prices:      make(map[string]map[string]float64),
+		cvdTrackers: make(map[string]map[string]*CVDTracker),
+		wsClients:   make(map[*websocket.Conn]bool),
+		priceChan:   make(chan exchanges.PriceData, 1000),
+		tradeChan:   make(chan exchanges.TradeData, 1000),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -46,6 +58,46 @@ func (s *FuturesScanner) processPrices() {
 	for priceData := range s.priceChan {
 		s.updatePrice(priceData)
 	}
+}
+
+func (s *FuturesScanner) processTrades() {
+	for tradeData := range s.tradeChan {
+		s.updateCVD(tradeData)
+	}
+}
+
+func (s *FuturesScanner) updateCVD(data exchanges.TradeData) {
+	s.cvdMutex.Lock()
+	defer s.cvdMutex.Unlock()
+
+	if s.cvdTrackers[data.Symbol] == nil {
+		s.cvdTrackers[data.Symbol] = make(map[string]*CVDTracker)
+	}
+
+	if s.cvdTrackers[data.Symbol][data.Exchange] == nil {
+		s.cvdTrackers[data.Symbol][data.Exchange] = &CVDTracker{}
+	}
+
+	tracker := s.cvdTrackers[data.Symbol][data.Exchange]
+	tracker.mutex.Lock()
+	defer tracker.mutex.Unlock()
+
+	// Parse quantity
+	quantity, err := strconv.ParseFloat(data.Quantity, 64)
+	if err != nil {
+		log.Printf("Error parsing quantity %s: %v", data.Quantity, err)
+		return
+	}
+
+	// Update CVD: buy orders add to CVD, sell orders subtract
+	if data.Side == "buy" {
+		tracker.cvd += quantity
+	} else {
+		tracker.cvd -= quantity
+	}
+
+	// Broadcast CVD update
+	s.broadcastCVD(data.Symbol, data.Exchange, tracker.cvd, data.Timestamp)
 }
 
 func (s *FuturesScanner) updatePrice(data exchanges.PriceData) {
@@ -131,6 +183,28 @@ func (s *FuturesScanner) broadcastOpportunity(opportunity ArbitrageOpportunity) 
 	}
 }
 
+func (s *FuturesScanner) broadcastCVD(symbol, exchange string, cvd float64, timestamp int64) {
+	s.clientsMutex.Lock()
+	defer s.clientsMutex.Unlock()
+
+	message := map[string]interface{}{
+		"type":      "cvd_update",
+		"symbol":    symbol,
+		"exchange":  exchange,
+		"cvd":       cvd,
+		"timestamp": timestamp,
+	}
+
+	for client := range s.wsClients {
+		err := client.WriteJSON(message)
+		if err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			client.Close()
+			delete(s.wsClients, client)
+		}
+	}
+}
+
 func (s *FuturesScanner) broadcastPrices() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -200,19 +274,22 @@ func main() {
 
 	symbols := []string{"BTCUSDT"}
 
-	// Start price processing goroutine
+	// Start processing goroutines
 	go scanner.processPrices()
+	go scanner.processTrades()
 
 	// Start exchange connections
-	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan)
-	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan)
-	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan)
+	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectDeribitFutures(symbols, scanner.priceChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 
 	http.HandleFunc("/ws", scanner.handleWebSocket)
 	http.Handle("/", http.FileServer(http.Dir("./static/")))
 
-	log.Println("Server starting on :8080")
+	log.Println("Server starting on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

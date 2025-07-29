@@ -8,7 +8,10 @@ class FuturesArbitrageScanner {
         this.connectedExchanges = new Set();
         
         this.chart = null;
-        this.chartData = [[], [], [], []]; // timestamps, binance, bybit, hyperliquid
+        this.cvdChart = null;
+        this.chartData = [[], [], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, kraken, deribit
+        this.cvdChartData = [[], [], [], [], [], []]; // timestamps, binance_cvd, bybit_cvd, hyperliquid_cvd, kraken_cvd, deribit_cvd
+        this.cvdHistory = new Map();
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
@@ -26,6 +29,7 @@ class FuturesArbitrageScanner {
     init() {
         this.setupEventListeners();
         this.setupChart();
+        this.setupCVDChart();
         this.connectWebSocket();
         this.startFPSCounter();
         this.startRenderLoop();
@@ -45,6 +49,12 @@ class FuturesArbitrageScanner {
                     height: this.getChartHeight()
                 });
             }
+            if (this.cvdChart) {
+                this.cvdChart.setSize({
+                    width: this.getCVDChartWidth(),
+                    height: this.getCVDChartHeight()
+                });
+            }
         });
     }
 
@@ -55,6 +65,8 @@ class FuturesArbitrageScanner {
         const now = Date.now() / 1000;
         this.chartData = [
             [now - 60, now],
+            [null, null],
+            [null, null],
             [null, null],
             [null, null],
             [null, null]
@@ -149,6 +161,20 @@ class FuturesArbitrageScanner {
                     width: 2,
                     spanGaps: false,
                     value: (_, v) => v == null ? '' : '$' + v.toFixed(2),
+                },
+                {
+                    label: "Kraken Futures",
+                    stroke: "#5a5aff",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + v.toFixed(2),
+                },
+                {
+                    label: "Deribit Futures",
+                    stroke: "#ff6b6b",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + v.toFixed(2),
                 }
             ],
             legend: {
@@ -184,6 +210,158 @@ class FuturesArbitrageScanner {
         this.updateChartTitle();
     }
 
+    setupCVDChart() {
+        const cvdChartContainer = document.getElementById('cvdChart');
+        
+        // Initialize with minimal data to show chart immediately
+        const now = Date.now() / 1000;
+        this.cvdChartData = [
+            [now - 60, now],
+            [null, null],
+            [null, null],
+            [null, null],
+            [null, null],
+            [null, null]
+        ];
+        
+        const opts = {
+            width: this.getCVDChartWidth(),
+            height: this.getCVDChartHeight(),
+            plugins: [
+                {
+                    hooks: {
+                        drawClear: [
+                            u => {
+                                const ctx = u.ctx;
+                                ctx.fillStyle = '#0f0f0f';
+                                ctx.fillRect(0, 0, u.over.width, u.over.height);
+                            }
+                        ]
+                    }
+                }
+            ],
+            scales: {
+                x: {
+                    time: true,
+                    space: 60,
+                },
+                y: {
+                    auto: true,
+                    space: 60,
+                }
+            },
+            axes: [
+                {
+                    stroke: '#444',
+                    grid: {
+                        show: true,
+                        stroke: '#222',
+                        width: 1,
+                    },
+                    ticks: {
+                        show: true,
+                        stroke: '#444',
+                        width: 1,
+                        size: 5,
+                    },
+                    font: '11px JetBrains Mono, Monaco, Consolas, monospace',
+                    labelFont: '11px JetBrains Mono, Monaco, Consolas, monospace',
+                    size: 60,
+                    gap: 8,
+                    stroke: '#888',
+                },
+                {
+                    stroke: '#444',
+                    grid: {
+                        show: true,
+                        stroke: '#222',
+                        width: 1,
+                    },
+                    ticks: {
+                        show: true,
+                        stroke: '#444',
+                        width: 1,
+                        size: 5,
+                    },
+                    font: '11px JetBrains Mono, Monaco, Consolas, monospace',
+                    labelFont: '11px JetBrains Mono, Monaco, Consolas, monospace',
+                    size: 80,
+                    gap: 5,
+                    stroke: '#888',
+                    values: (_, vals) => vals.map(v => v.toFixed(0)),
+                }
+            ],
+            series: [
+                {},
+                {
+                    label: "Binance CVD",
+                    stroke: "#f0b90b",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : v.toFixed(0),
+                },
+                {
+                    label: "Bybit CVD",
+                    stroke: "#f7931a",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : v.toFixed(0),
+                },
+                {
+                    label: "Hyperliquid CVD",
+                    stroke: "#97FCE4",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : v.toFixed(0),
+                },
+                {
+                    label: "Kraken CVD",
+                    stroke: "#5a5aff",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : v.toFixed(0),
+                },
+                {
+                    label: "Deribit CVD",
+                    stroke: "#ff6b6b",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : v.toFixed(0),
+                }
+            ],
+            legend: {
+                show: false,
+            },
+            cursor: {
+                show: true,
+                x: true,
+                y: true,
+                lock: false,
+                focus: {
+                    prox: 16,
+                },
+                drag: {
+                    setScale: false,
+                    x: true,
+                    y: false,
+                },
+            },
+            select: {
+                show: false,
+            },
+            hooks: {
+                setCursor: [
+                    (u) => {
+                        this.updateCVDCustomLegend(u);
+                    }
+                ]
+            }
+        };
+
+        this.cvdChart = new uPlot(opts, this.cvdChartData, cvdChartContainer);
+        this.updateCVDChartTitle();
+    }
+
     getChartWidth() {
         const chartContainer = document.getElementById('chart');
         return chartContainer ? chartContainer.clientWidth - 20 : 800;
@@ -195,6 +373,19 @@ class FuturesArbitrageScanner {
         
         const containerHeight = chartContainer.clientHeight;
         return Math.max(containerHeight - 25, 300);
+    }
+
+    getCVDChartWidth() {
+        const cvdChartContainer = document.getElementById('cvdChart');
+        return cvdChartContainer ? cvdChartContainer.clientWidth - 20 : 800;
+    }
+
+    getCVDChartHeight() {
+        const cvdChartContainer = document.getElementById('cvdChart');
+        if (!cvdChartContainer) return 300;
+        
+        const containerHeight = cvdChartContainer.clientHeight;
+        return Math.max(containerHeight - 25, 200);
     }
 
     connectWebSocket() {
@@ -256,6 +447,8 @@ class FuturesArbitrageScanner {
             this.updatePrices(data.prices);
         } else if (data.type === 'price_update') {
             this.handlePriceUpdate(data);
+        } else if (data.type === 'cvd_update') {
+            this.handleCVDUpdate(data);
         } else if (data.type === 'arbitrage') {
             this.handleArbitrageOpportunity(data.opportunity);
         }
@@ -281,6 +474,28 @@ class FuturesArbitrageScanner {
             this.addPriceToHistory(data.exchange, data.price, data.timestamp);
             this.updateExchangeList();
             this.updateChart();
+        }
+    }
+
+    handleCVDUpdate(data) {
+        if (data.symbol === this.currentSymbol) {
+            this.addCVDToHistory(data.exchange, data.cvd, data.timestamp);
+            this.updateCVDChart();
+        }
+    }
+
+    addCVDToHistory(exchange, cvd, timestamp = null) {
+        const ts = timestamp ? timestamp / 1000 : Date.now() / 1000;
+        
+        if (!this.cvdHistory.has(exchange)) {
+            this.cvdHistory.set(exchange, []);
+        }
+
+        const history = this.cvdHistory.get(exchange);
+        history.push([ts, cvd]);
+
+        if (history.length > this.maxHistoryPoints) {
+            history.shift();
         }
     }
 
@@ -327,7 +542,9 @@ class FuturesArbitrageScanner {
         const exchangeColors = {
             'binance_futures': '#f0b90b',
             'bybit_futures': '#f7931a',
-            'hyperliquid_futures': '#97FCE4'
+            'hyperliquid_futures': '#97FCE4',
+            'kraken_futures': '#5a5aff',
+            'deribit_futures': '#ff6b6b'
         };
 
         let html = '';
@@ -377,14 +594,18 @@ class FuturesArbitrageScanner {
         const binanceHistory = this.priceHistory.get('binance_futures') || [];
         const bybitHistory = this.priceHistory.get('bybit_futures') || [];
         const hyperliquidHistory = this.priceHistory.get('hyperliquid_futures') || [];
+        const krakenHistory = this.priceHistory.get('kraken_futures') || [];
+        const deribitHistory = this.priceHistory.get('deribit_futures') || [];
         
-        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0) return;
+        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && krakenHistory.length === 0 && deribitHistory.length === 0) return;
 
         // Create combined timestamp array
         const allTimestamps = new Set();
         binanceHistory.forEach(point => allTimestamps.add(point[0]));
         bybitHistory.forEach(point => allTimestamps.add(point[0]));
         hyperliquidHistory.forEach(point => allTimestamps.add(point[0]));
+        krakenHistory.forEach(point => allTimestamps.add(point[0]));
+        deribitHistory.forEach(point => allTimestamps.add(point[0]));
         
         const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
         
@@ -392,19 +613,27 @@ class FuturesArbitrageScanner {
         const binancePrices = [];
         const bybitPrices = [];
         const hyperliquidPrices = [];
+        const krakenPrices = [];
+        const deribitPrices = [];
         
         const binanceMap = new Map(binanceHistory);
         const bybitMap = new Map(bybitHistory);
         const hyperliquidMap = new Map(hyperliquidHistory);
+        const krakenMap = new Map(krakenHistory);
+        const deribitMap = new Map(deribitHistory);
         
         let lastBinancePrice = null;
         let lastBybitPrice = null;
         let lastHyperliquidPrice = null;
+        let lastKrakenPrice = null;
+        let lastDeribitPrice = null;
         
         timestamps.forEach(timestamp => {
             const binancePrice = binanceMap.get(timestamp);
             const bybitPrice = bybitMap.get(timestamp);
             const hyperliquidPrice = hyperliquidMap.get(timestamp);
+            const krakenPrice = krakenMap.get(timestamp);
+            const deribitPrice = deribitMap.get(timestamp);
             
             if (binancePrice !== undefined) {
                 lastBinancePrice = binancePrice;
@@ -415,15 +644,113 @@ class FuturesArbitrageScanner {
             if (hyperliquidPrice !== undefined) {
                 lastHyperliquidPrice = hyperliquidPrice;
             }
+            if (krakenPrice !== undefined) {
+                lastKrakenPrice = krakenPrice;
+            }
+            if (deribitPrice !== undefined) {
+                lastDeribitPrice = deribitPrice;
+            }
             
             binancePrices.push(lastBinancePrice);
             bybitPrices.push(lastBybitPrice);
             hyperliquidPrices.push(lastHyperliquidPrice);
+            krakenPrices.push(lastKrakenPrice);
+            deribitPrices.push(lastDeribitPrice);
         });
 
-        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices];
+        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, krakenPrices, deribitPrices];
         this.chart.setData(this.chartData);
         this.lastChartUpdate = performance.now();
+    }
+
+    updateCVDChart() {
+        const now = performance.now();
+        if (now - this.lastChartUpdate < this.chartUpdateThrottle) {
+            if (!this.chartUpdatePending) {
+                this.chartUpdatePending = true;
+                setTimeout(() => {
+                    this.chartUpdatePending = false;
+                    this.performCVDChartUpdate();
+                }, this.chartUpdateThrottle - (now - this.lastChartUpdate));
+            }
+            return;
+        }
+        
+        this.performCVDChartUpdate();
+    }
+
+    performCVDChartUpdate() {
+        if (!this.cvdChart || this.cvdHistory.size === 0) return;
+
+        const binanceCVDHistory = this.cvdHistory.get('binance_futures') || [];
+        const bybitCVDHistory = this.cvdHistory.get('bybit_futures') || [];
+        const hyperliquidCVDHistory = this.cvdHistory.get('hyperliquid_futures') || [];
+        const krakenCVDHistory = this.cvdHistory.get('kraken_futures') || [];
+        const deribitCVDHistory = this.cvdHistory.get('deribit_futures') || [];
+        
+        if (binanceCVDHistory.length === 0 && bybitCVDHistory.length === 0 && hyperliquidCVDHistory.length === 0 && krakenCVDHistory.length === 0 && deribitCVDHistory.length === 0) return;
+
+        // Create combined timestamp array
+        const allTimestamps = new Set();
+        binanceCVDHistory.forEach(point => allTimestamps.add(point[0]));
+        bybitCVDHistory.forEach(point => allTimestamps.add(point[0]));
+        hyperliquidCVDHistory.forEach(point => allTimestamps.add(point[0]));
+        krakenCVDHistory.forEach(point => allTimestamps.add(point[0]));
+        deribitCVDHistory.forEach(point => allTimestamps.add(point[0]));
+        
+        const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+        
+        // Create CVD arrays with forward-filled values for missing data points
+        const binanceCVDs = [];
+        const bybitCVDs = [];
+        const hyperliquidCVDs = [];
+        const krakenCVDs = [];
+        const deribitCVDs = [];
+        
+        const binanceMap = new Map(binanceCVDHistory);
+        const bybitMap = new Map(bybitCVDHistory);
+        const hyperliquidMap = new Map(hyperliquidCVDHistory);
+        const krakenMap = new Map(krakenCVDHistory);
+        const deribitMap = new Map(deribitCVDHistory);
+        
+        let lastBinanceCVD = null;
+        let lastBybitCVD = null;
+        let lastHyperliquidCVD = null;
+        let lastKrakenCVD = null;
+        let lastDeribitCVD = null;
+        
+        timestamps.forEach(timestamp => {
+            const binanceCVD = binanceMap.get(timestamp);
+            const bybitCVD = bybitMap.get(timestamp);
+            const hyperliquidCVD = hyperliquidMap.get(timestamp);
+            const krakenCVD = krakenMap.get(timestamp);
+            const deribitCVD = deribitMap.get(timestamp);
+            
+            if (binanceCVD !== undefined) {
+                lastBinanceCVD = binanceCVD;
+            }
+            if (bybitCVD !== undefined) {
+                lastBybitCVD = bybitCVD;
+            }
+            if (hyperliquidCVD !== undefined) {
+                lastHyperliquidCVD = hyperliquidCVD;
+            }
+            if (krakenCVD !== undefined) {
+                lastKrakenCVD = krakenCVD;
+            }
+            if (deribitCVD !== undefined) {
+                lastDeribitCVD = deribitCVD;
+            }
+            
+            binanceCVDs.push(lastBinanceCVD);
+            bybitCVDs.push(lastBybitCVD);
+            hyperliquidCVDs.push(lastHyperliquidCVD);
+            krakenCVDs.push(lastKrakenCVD);
+            deribitCVDs.push(lastDeribitCVD);
+        });
+
+        this.cvdChartData = [timestamps, binanceCVDs, bybitCVDs, hyperliquidCVDs, krakenCVDs, deribitCVDs];
+        this.cvdChart.setData(this.cvdChartData);
     }
 
     handleArbitrageOpportunity(opportunity) {
@@ -469,14 +796,20 @@ class FuturesArbitrageScanner {
         this.currentSymbol = newSymbol;
         this.exchanges.clear();
         this.priceHistory.clear();
+        this.cvdHistory.clear();
         this.arbitrageAlerts = [];
         
-        this.chartData = [[], [], [], []];
+        this.chartData = [[], [], [], [], [], []];
+        this.cvdChartData = [[], [], [], [], [], []];
         if (this.chart) {
             this.chart.setData(this.chartData);
         }
+        if (this.cvdChart) {
+            this.cvdChart.setData(this.cvdChartData);
+        }
 
         this.updateChartTitle();
+        this.updateCVDChartTitle();
         this.updateExchangeList();
         this.updateArbitrageAlerts();
         
@@ -488,6 +821,11 @@ class FuturesArbitrageScanner {
     updateChartTitle() {
         const chartTitle = document.getElementById('chartTitle');
         chartTitle.textContent = `Price Chart - ${this.currentSymbol} (Live)`;
+    }
+
+    updateCVDChartTitle() {
+        const cvdChartTitle = document.getElementById('cvdChartTitle');
+        cvdChartTitle.textContent = `CVD Chart - ${this.currentSymbol} (Live)`;
     }
 
     updateExchangeTooltip() {
@@ -508,6 +846,8 @@ class FuturesArbitrageScanner {
         const binanceValue = document.getElementById('binanceValue');
         const bybitValue = document.getElementById('bybitValue');
         const hyperliquidValue = document.getElementById('hyperliquidValue');
+        const krakenValue = document.getElementById('krakenValue');
+        const deribitValue = document.getElementById('deribitValue');
 
         if (u.cursor.idx === null) {
             legend.classList.remove('visible');
@@ -522,6 +862,8 @@ class FuturesArbitrageScanner {
         const binancePrice = u.data[1][idx];
         const bybitPrice = u.data[2][idx];
         const hyperliquidPrice = u.data[3][idx];
+        const krakenPrice = u.data[4][idx];
+        const deribitPrice = u.data[5][idx];
 
         // Format timestamp with milliseconds
         if (timestamp) {
@@ -537,6 +879,51 @@ class FuturesArbitrageScanner {
         binanceValue.textContent = binancePrice ? `$${binancePrice.toFixed(2)}` : '--';
         bybitValue.textContent = bybitPrice ? `$${bybitPrice.toFixed(2)}` : '--';
         hyperliquidValue.textContent = hyperliquidPrice ? `$${hyperliquidPrice.toFixed(2)}` : '--';
+        krakenValue.textContent = krakenPrice ? `$${krakenPrice.toFixed(2)}` : '--';
+        deribitValue.textContent = deribitPrice ? `$${deribitPrice.toFixed(2)}` : '--';
+    }
+
+    updateCVDCustomLegend(u) {
+        const legend = document.getElementById('cvdChartLegend');
+        const legendTime = document.getElementById('cvdLegendTime');
+        const binanceCVDValue = document.getElementById('binanceCVDValue');
+        const bybitCVDValue = document.getElementById('bybitCVDValue');
+        const hyperliquidCVDValue = document.getElementById('hyperliquidCVDValue');
+        const krakenCVDValue = document.getElementById('krakenCVDValue');
+        const deribitCVDValue = document.getElementById('deribitCVDValue');
+
+        if (u.cursor.idx === null) {
+            legend.classList.remove('visible');
+            return;
+        }
+
+        legend.classList.add('visible');
+
+        // Get the data at cursor position
+        const idx = u.cursor.idx;
+        const timestamp = u.data[0][idx];
+        const binanceCVD = u.data[1][idx];
+        const bybitCVD = u.data[2][idx];
+        const hyperliquidCVD = u.data[3][idx];
+        const krakenCVD = u.data[4][idx];
+        const deribitCVD = u.data[5][idx];
+
+        // Format timestamp with milliseconds
+        if (timestamp) {
+            const date = new Date(timestamp * 1000);
+            const timeString = date.toLocaleString();
+            const ms = Math.floor((timestamp * 1000) % 1000);
+            legendTime.textContent = `${timeString}.${ms.toString().padStart(3, '0')}`;
+        } else {
+            legendTime.textContent = '--';
+        }
+
+        // Update values
+        binanceCVDValue.textContent = binanceCVD ? binanceCVD.toFixed(0) : '--';
+        bybitCVDValue.textContent = bybitCVD ? bybitCVD.toFixed(0) : '--';
+        hyperliquidCVDValue.textContent = hyperliquidCVD ? hyperliquidCVD.toFixed(0) : '--';
+        krakenCVDValue.textContent = krakenCVD ? krakenCVD.toFixed(0) : '--';
+        deribitCVDValue.textContent = deribitCVD ? deribitCVD.toFixed(0) : '--';
     }
 
 

@@ -21,7 +21,7 @@ type BinanceFuturesTrade struct {
 	IsMaker   bool   `json:"m"`
 }
 
-func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData) {
+func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
 	streamNames := make([]string, len(symbols))
 	for i, symbol := range symbols {
 		streamNames[i] = strings.ToLower(symbol) + "@aggTrade"
@@ -58,6 +58,14 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData) {
 				continue
 			}
 
+			// Normalize trade side (isMaker: false = buy aggressor, true = sell aggressor)
+			var side string
+			if !message.Data.IsMaker {
+				side = "buy"
+			} else {
+				side = "sell"
+			}
+
 			priceData := PriceData{
 				Symbol:    message.Data.Symbol,
 				Exchange:  "binance_futures",
@@ -65,7 +73,17 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData) {
 				Timestamp: message.Data.TradeTime,
 			}
 
+			tradeData := TradeData{
+				Symbol:    message.Data.Symbol,
+				Exchange:  "binance_futures",
+				Price:     price,
+				Quantity:  message.Data.Quantity,
+				Side:      side,
+				Timestamp: message.Data.TradeTime,
+			}
+
 			priceChan <- priceData
+			tradeChan <- tradeData
 		}
 
 		time.Sleep(2 * time.Second)
