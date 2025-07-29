@@ -5,7 +5,7 @@ class FuturesArbitrageScanner {
         this.priceHistory = new Map();
         this.arbitrageAlerts = [];
         this.maxHistoryPoints = 1000;
-        this.timeframe = '1m';
+        this.connectedExchanges = new Set();
         
         this.chart = null;
         this.chartData = [[], [], []]; // timestamps, binance, bybit
@@ -16,6 +16,9 @@ class FuturesArbitrageScanner {
         this.fps = 0;
         this.frameCount = 0;
         this.lastTime = performance.now();
+        this.chartUpdatePending = false;
+        this.lastChartUpdate = 0;
+        this.chartUpdateThrottle = 100; // ms
         
         this.init();
     }
@@ -34,15 +37,6 @@ class FuturesArbitrageScanner {
             this.changeSymbol(e.target.value.toUpperCase());
         });
 
-        const timeframeBtns = document.querySelectorAll('.chart-btn[data-timeframe]');
-        timeframeBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                timeframeBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.timeframe = e.target.dataset.timeframe;
-                this.updateChartTitle();
-            });
-        });
 
         window.addEventListener('resize', () => {
             if (this.chart) {
@@ -57,6 +51,14 @@ class FuturesArbitrageScanner {
     setupChart() {
         const chartContainer = document.getElementById('chart');
         
+        // Initialize with minimal data to show chart immediately
+        const now = Date.now() / 1000;
+        this.chartData = [
+            [now - 60, now],
+            [null, null],
+            [null, null]
+        ];
+        
         const opts = {
             title: `${this.currentSymbol} Futures Prices`,
             width: this.getChartWidth(),
@@ -68,7 +70,7 @@ class FuturesArbitrageScanner {
                             u => {
                                 const ctx = u.ctx;
                                 ctx.fillStyle = '#0f0f0f';
-                                ctx.fillRect(0, 0, u.bbox.width, u.bbox.height);
+                                ctx.fillRect(0, 0, u.over.width, u.over.height);
                             }
                         ]
                     }
@@ -143,8 +145,31 @@ class FuturesArbitrageScanner {
                 }
             ],
             legend: {
+                show: false,
+            },
+            cursor: {
                 show: true,
-                live: true,
+                x: true,
+                y: true,
+                lock: false,
+                focus: {
+                    prox: 16,
+                },
+                drag: {
+                    setScale: false,
+                    x: true,
+                    y: false,
+                },
+            },
+            select: {
+                show: false,
+            },
+            hooks: {
+                setCursor: [
+                    (u) => {
+                        this.updateCustomLegend(u);
+                    }
+                ]
             }
         };
 
@@ -159,7 +184,10 @@ class FuturesArbitrageScanner {
 
     getChartHeight() {
         const chartContainer = document.getElementById('chart');
-        return chartContainer ? chartContainer.clientHeight - 20 : 400;
+        if (!chartContainer) return 400;
+        
+        const containerHeight = chartContainer.clientHeight;
+        return Math.max(containerHeight - 20, 300);
     }
 
     connectWebSocket() {
@@ -219,6 +247,8 @@ class FuturesArbitrageScanner {
     handleWebSocketMessage(data) {
         if (data.type === 'prices') {
             this.updatePrices(data.prices);
+        } else if (data.type === 'price_update') {
+            this.handlePriceUpdate(data);
         } else if (data.type === 'arbitrage') {
             this.handleArbitrageOpportunity(data.opportunity);
         }
@@ -238,6 +268,15 @@ class FuturesArbitrageScanner {
         }
     }
 
+    handlePriceUpdate(data) {
+        if (data.symbol === this.currentSymbol) {
+            this.updateExchangePrice(data.exchange, data.price);
+            this.addPriceToHistory(data.exchange, data.price, data.timestamp);
+            this.updateExchangeList();
+            this.updateChart();
+        }
+    }
+
     updateExchangePrice(exchange, price) {
         const previousPrice = this.exchanges.get(exchange)?.price || price;
         const change = price - previousPrice;
@@ -250,17 +289,20 @@ class FuturesArbitrageScanner {
             changePercent: changePercent,
             lastUpdate: Date.now()
         });
+
+        this.connectedExchanges.add(exchange);
+        this.updateExchangeTooltip();
     }
 
-    addPriceToHistory(exchange, price) {
-        const timestamp = Date.now() / 1000;
+    addPriceToHistory(exchange, price, timestamp = null) {
+        const ts = timestamp ? timestamp / 1000 : Date.now() / 1000;
         
         if (!this.priceHistory.has(exchange)) {
             this.priceHistory.set(exchange, []);
         }
 
         const history = this.priceHistory.get(exchange);
-        history.push([timestamp, price]);
+        history.push([ts, price]);
 
         if (history.length > this.maxHistoryPoints) {
             history.shift();
@@ -297,6 +339,22 @@ class FuturesArbitrageScanner {
     }
 
     updateChart() {
+        const now = performance.now();
+        if (now - this.lastChartUpdate < this.chartUpdateThrottle) {
+            if (!this.chartUpdatePending) {
+                this.chartUpdatePending = true;
+                setTimeout(() => {
+                    this.chartUpdatePending = false;
+                    this.performChartUpdate();
+                }, this.chartUpdateThrottle - (now - this.lastChartUpdate));
+            }
+            return;
+        }
+        
+        this.performChartUpdate();
+    }
+
+    performChartUpdate() {
         if (!this.chart || this.priceHistory.size === 0) return;
 
         const binanceHistory = this.priceHistory.get('binance_futures') || [];
@@ -311,20 +369,34 @@ class FuturesArbitrageScanner {
         
         const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
         
-        // Create price arrays with null for missing data points
+        // Create price arrays with forward-filled values for missing data points
         const binancePrices = [];
         const bybitPrices = [];
         
         const binanceMap = new Map(binanceHistory);
         const bybitMap = new Map(bybitHistory);
         
+        let lastBinancePrice = null;
+        let lastBybitPrice = null;
+        
         timestamps.forEach(timestamp => {
-            binancePrices.push(binanceMap.get(timestamp) || null);
-            bybitPrices.push(bybitMap.get(timestamp) || null);
+            const binancePrice = binanceMap.get(timestamp);
+            const bybitPrice = bybitMap.get(timestamp);
+            
+            if (binancePrice !== undefined) {
+                lastBinancePrice = binancePrice;
+            }
+            if (bybitPrice !== undefined) {
+                lastBybitPrice = bybitPrice;
+            }
+            
+            binancePrices.push(lastBinancePrice);
+            bybitPrices.push(lastBybitPrice);
         });
 
         this.chartData = [timestamps, binancePrices, bybitPrices];
         this.chart.setData(this.chartData);
+        this.lastChartUpdate = performance.now();
     }
 
     handleArbitrageOpportunity(opportunity) {
@@ -388,7 +460,51 @@ class FuturesArbitrageScanner {
 
     updateChartTitle() {
         const chartTitle = document.getElementById('chartTitle');
-        chartTitle.textContent = `Price Chart - ${this.currentSymbol} (${this.timeframe})`;
+        chartTitle.textContent = `Price Chart - ${this.currentSymbol} (Live)`;
+    }
+
+    updateExchangeTooltip() {
+        const tooltip = document.getElementById('exchangeTooltip');
+        if (this.connectedExchanges.size === 0) {
+            tooltip.textContent = 'No exchanges connected';
+        } else {
+            const exchangeNames = Array.from(this.connectedExchanges)
+                .map(ex => ex.replace('_', ' ').toUpperCase())
+                .join(', ');
+            tooltip.textContent = `Connected: ${exchangeNames}`;
+        }
+    }
+
+    updateCustomLegend(u) {
+        const legend = document.getElementById('chartLegend');
+        const legendTime = document.getElementById('legendTime');
+        const binanceValue = document.getElementById('binanceValue');
+        const bybitValue = document.getElementById('bybitValue');
+
+        if (u.cursor.idx === null) {
+            legend.classList.remove('visible');
+            return;
+        }
+
+        legend.classList.add('visible');
+
+        // Get the data at cursor position
+        const idx = u.cursor.idx;
+        const timestamp = u.data[0][idx];
+        const binancePrice = u.data[1][idx];
+        const bybitPrice = u.data[2][idx];
+
+        // Format timestamp
+        if (timestamp) {
+            const date = new Date(timestamp * 1000);
+            legendTime.textContent = date.toLocaleString();
+        } else {
+            legendTime.textContent = '--';
+        }
+
+        // Update values
+        binanceValue.textContent = binancePrice ? `$${binancePrice.toFixed(2)}` : '--';
+        bybitValue.textContent = bybitPrice ? `$${bybitPrice.toFixed(2)}` : '--';
     }
 
     startFPSCounter() {

@@ -114,7 +114,7 @@ func (s *FuturesScanner) connectBinanceFutures(symbols []string) {
 				Symbol:    message.Data.Symbol,
 				Exchange:  "binance_futures",
 				Price:     price,
-				Timestamp: time.Now().UnixMilli(),
+				Timestamp: message.Data.TradeTime,
 			}
 
 			s.updatePrice(priceData)
@@ -174,7 +174,7 @@ func (s *FuturesScanner) connectBybitFutures(symbols []string) {
 						Symbol:    trade.Symbol,
 						Exchange:  "bybit_futures",
 						Price:     price,
-						Timestamp: time.Now().UnixMilli(),
+						Timestamp: trade.Timestamp,
 					}
 
 					s.updatePrice(priceData)

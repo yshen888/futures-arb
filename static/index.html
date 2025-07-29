@@ -59,6 +59,39 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            position: relative;
+        }
+
+        .tooltip {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: rgba(0, 0, 0, 0.9);
+            color: #e0e0e0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            border: 1px solid #333;
+            z-index: 1000;
+            margin-top: 5px;
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            right: 15px;
+            border: 5px solid transparent;
+            border-bottom-color: rgba(0, 0, 0, 0.9);
+        }
+
+        .status-item:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
         }
 
         .status-dot {
@@ -174,6 +207,8 @@
             border-radius: 6px;
             position: relative;
             min-height: 400px;
+            display: flex;
+            flex-direction: column;
         }
 
         .chart-header {
@@ -190,30 +225,6 @@
             font-size: 14px;
         }
 
-        .chart-controls {
-            display: flex;
-            gap: 10px;
-        }
-
-        .chart-btn {
-            padding: 4px 8px;
-            background: #333;
-            border: none;
-            color: #e0e0e0;
-            border-radius: 3px;
-            font-size: 10px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .chart-btn:hover {
-            background: #444;
-        }
-
-        .chart-btn.active {
-            background: #00ff88;
-            color: #000;
-        }
 
         .arbitrage-alerts {
             max-height: 300px;
@@ -254,20 +265,6 @@
             50% { opacity: 0.7; }
         }
 
-        .fps-counter {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff88;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-family: inherit;
-            border: 1px solid #333;
-            min-width: 60px;
-            text-align: center;
-        }
 
         .loading {
             display: flex;
@@ -302,6 +299,71 @@
             color: #e0e0e0 !important;
         }
 
+        .chart-legend {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(26, 26, 26, 0.95);
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 11px;
+            min-width: 180px;
+            z-index: 10;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .chart-legend.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .legend-time {
+            color: #888;
+            margin-bottom: 8px;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        .legend-values {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 2px;
+            border-radius: 1px;
+        }
+
+        .legend-color.binance {
+            background: #f0b90b;
+        }
+
+        .legend-color.bybit {
+            background: #f7931a;
+        }
+
+        .legend-label {
+            color: #ccc;
+            font-size: 10px;
+            min-width: 50px;
+        }
+
+        .legend-value {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+
         .scrollbar {
             scrollbar-width: thin;
             scrollbar-color: #444 #222;
@@ -333,9 +395,13 @@
                 <div class="status-item">
                     <div class="status-dot" id="wsStatus"></div>
                     <span id="wsStatusText">Connecting...</span>
+                    <div class="tooltip" id="exchangeTooltip">No exchanges connected</div>
                 </div>
                 <div class="status-item">
                     <span id="symbolStatus">-</span>
+                </div>
+                <div class="status-item">
+                    <span id="fpsCounter">0 FPS</span>
                 </div>
             </div>
         </div>
@@ -372,20 +438,29 @@
         <div class="main">
             <div class="chart-container">
                 <div class="chart-header">
-                    <div class="chart-title" id="chartTitle">Price Chart - BTCUSDT</div>
-                    <div class="chart-controls">
-                        <button class="chart-btn active" data-timeframe="1m">1M</button>
-                        <button class="chart-btn" data-timeframe="5m">5M</button>
-                        <button class="chart-btn" data-timeframe="15m">15M</button>
-                        <button class="chart-btn" data-timeframe="1h">1H</button>
+                    <div class="chart-title" id="chartTitle">Price Chart - BTCUSDT (Live)</div>
+                </div>
+                <div id="chart" style="flex: 1; padding: 10px; overflow: hidden; position: relative;">
+                    <div id="chartLegend" class="chart-legend">
+                        <div class="legend-time" id="legendTime">--</div>
+                        <div class="legend-values" id="legendValues">
+                            <div class="legend-item">
+                                <span class="legend-color binance"></span>
+                                <span class="legend-label">Binance:</span>
+                                <span class="legend-value" id="binanceValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color bybit"></span>
+                                <span class="legend-label">Bybit:</span>
+                                <span class="legend-value" id="bybitValue">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div id="chart" style="flex: 1; padding: 10px;"></div>
             </div>
         </div>
     </div>
 
-    <div class="fps-counter" id="fpsCounter">0 FPS</div>
 
     <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uPlot.iife.min.js"></script>
     <script src="app.js"></script>
