@@ -60,7 +60,6 @@ class FuturesArbitrageScanner {
         ];
         
         const opts = {
-            title: `${this.currentSymbol} Futures Prices`,
             width: this.getChartWidth(),
             height: this.getChartHeight(),
             plugins: [
@@ -102,8 +101,8 @@ class FuturesArbitrageScanner {
                     },
                     font: '11px JetBrains Mono, Monaco, Consolas, monospace',
                     labelFont: '11px JetBrains Mono, Monaco, Consolas, monospace',
-                    size: 50,
-                    gap: 5,
+                    size: 60,
+                    gap: 8,
                     stroke: '#888',
                 },
                 {
@@ -187,7 +186,7 @@ class FuturesArbitrageScanner {
         if (!chartContainer) return 400;
         
         const containerHeight = chartContainer.clientHeight;
-        return Math.max(containerHeight - 20, 300);
+        return Math.max(containerHeight - 25, 300);
     }
 
     connectWebSocket() {
@@ -494,10 +493,12 @@ class FuturesArbitrageScanner {
         const binancePrice = u.data[1][idx];
         const bybitPrice = u.data[2][idx];
 
-        // Format timestamp
+        // Format timestamp with milliseconds
         if (timestamp) {
             const date = new Date(timestamp * 1000);
-            legendTime.textContent = date.toLocaleString();
+            const timeString = date.toLocaleString();
+            const ms = Math.floor((timestamp * 1000) % 1000);
+            legendTime.textContent = `${timeString}.${ms.toString().padStart(3, '0')}`;
         } else {
             legendTime.textContent = '--';
         }
