@@ -1,47 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"futures-arbitrage-scanner/exchanges"
 	"github.com/gorilla/websocket"
 )
-
-type BinanceFuturesTrade struct {
-	EventType string `json:"e"`
-	EventTime int64  `json:"E"`
-	Symbol    string `json:"s"`
-	TradeID   int64  `json:"a"`
-	Price     string `json:"p"`
-	Quantity  string `json:"q"`
-	TradeTime int64  `json:"T"`
-	IsMaker   bool   `json:"m"`
-}
-
-type BybitFuturesTrade struct {
-	Topic string `json:"topic"`
-	Type  string `json:"type"`
-	Data  []struct {
-		Symbol    string `json:"s"`
-		Price     string `json:"p"`
-		Size      string `json:"v"`
-		Side      string `json:"S"`
-		Timestamp int64  `json:"T"`
-		TradeID   string `json:"i"`
-	} `json:"data"`
-}
-
-type PriceData struct {
-	Symbol    string
-	Exchange  string
-	Price     float64
-	Timestamp int64
-}
 
 type ArbitrageOpportunity struct {
 	Symbol       string  `json:"symbol"`
@@ -59,12 +26,14 @@ type FuturesScanner struct {
 	wsClients    map[*websocket.Conn]bool
 	clientsMutex sync.RWMutex
 	upgrader     websocket.Upgrader
+	priceChan    chan exchanges.PriceData
 }
 
 func NewFuturesScanner() *FuturesScanner {
 	return &FuturesScanner{
 		prices:    make(map[string]map[string]float64),
 		wsClients: make(map[*websocket.Conn]bool),
+		priceChan: make(chan exchanges.PriceData, 1000),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -73,120 +42,13 @@ func NewFuturesScanner() *FuturesScanner {
 	}
 }
 
-func (s *FuturesScanner) connectBinanceFutures(symbols []string) {
-	streamNames := make([]string, len(symbols))
-	for i, symbol := range symbols {
-		streamNames[i] = strings.ToLower(symbol) + "@aggTrade"
-	}
-	streamParam := strings.Join(streamNames, "/")
-
-	wsURL := fmt.Sprintf("wss://fstream.binance.com/stream?streams=%s", streamParam)
-
-	for {
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-		if err != nil {
-			log.Printf("Binance connection error: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		log.Printf("Connected to Binance futures WebSocket")
-
-		for {
-			var message struct {
-				Stream string              `json:"stream"`
-				Data   BinanceFuturesTrade `json:"data"`
-			}
-
-			err := conn.ReadJSON(&message)
-			if err != nil {
-				log.Printf("Binance read error: %v", err)
-				conn.Close()
-				break
-			}
-
-			price, err := strconv.ParseFloat(message.Data.Price, 64)
-			if err != nil {
-				continue
-			}
-
-			priceData := PriceData{
-				Symbol:    message.Data.Symbol,
-				Exchange:  "binance_futures",
-				Price:     price,
-				Timestamp: message.Data.TradeTime,
-			}
-
-			s.updatePrice(priceData)
-		}
-
-		time.Sleep(2 * time.Second)
+func (s *FuturesScanner) processPrices() {
+	for priceData := range s.priceChan {
+		s.updatePrice(priceData)
 	}
 }
 
-func (s *FuturesScanner) connectBybitFutures(symbols []string) {
-	wsURL := "wss://stream.bybit.com/v5/public/linear"
-
-	for {
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-		if err != nil {
-			log.Printf("Bybit connection error: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		log.Printf("Connected to Bybit futures WebSocket")
-
-		subscribeMsg := map[string]interface{}{
-			"op": "subscribe",
-			"args": make([]string, len(symbols)),
-		}
-
-		for i, symbol := range symbols {
-			subscribeMsg["args"].([]string)[i] = fmt.Sprintf("publicTrade.%s", symbol)
-		}
-
-		err = conn.WriteJSON(subscribeMsg)
-		if err != nil {
-			log.Printf("Bybit subscription error: %v", err)
-			conn.Close()
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		for {
-			var message BybitFuturesTrade
-			err := conn.ReadJSON(&message)
-			if err != nil {
-				log.Printf("Bybit read error: %v", err)
-				conn.Close()
-				break
-			}
-
-			if message.Type == "snapshot" || message.Type == "delta" {
-				for _, trade := range message.Data {
-					price, err := strconv.ParseFloat(trade.Price, 64)
-					if err != nil {
-						continue
-					}
-
-					priceData := PriceData{
-						Symbol:    trade.Symbol,
-						Exchange:  "bybit_futures",
-						Price:     price,
-						Timestamp: trade.Timestamp,
-					}
-
-					s.updatePrice(priceData)
-				}
-			}
-		}
-
-		time.Sleep(2 * time.Second)
-	}
-}
-
-func (s *FuturesScanner) updatePrice(data PriceData) {
+func (s *FuturesScanner) updatePrice(data exchanges.PriceData) {
 	s.pricesMutex.Lock()
 	if s.prices[data.Symbol] == nil {
 		s.prices[data.Symbol] = make(map[string]float64)
@@ -290,7 +152,7 @@ func (s *FuturesScanner) broadcastPrices() {
 				"prices": pricesCopy,
 			}
 
-			s.clientsMutex.RLock()
+			s.clientsMutex.Lock()
 			for client := range s.wsClients {
 				err := client.WriteJSON(message)
 				if err != nil {
@@ -299,7 +161,7 @@ func (s *FuturesScanner) broadcastPrices() {
 					delete(s.wsClients, client)
 				}
 			}
-			s.clientsMutex.RUnlock()
+			s.clientsMutex.Unlock()
 		}
 	}
 }
@@ -338,8 +200,14 @@ func main() {
 
 	symbols := []string{"BTCUSDT"}
 
-	go scanner.connectBinanceFutures(symbols)
-	go scanner.connectBybitFutures(symbols)
+	// Start price processing goroutine
+	go scanner.processPrices()
+
+	// Start exchange connections
+	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan)
+	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan)
+	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan)
+
 	go scanner.broadcastPrices()
 
 	http.HandleFunc("/ws", scanner.handleWebSocket)

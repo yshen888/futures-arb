@@ -186,6 +186,13 @@
             text-transform: uppercase;
         }
 
+        .exchange-color-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
         .exchange-price {
             font-weight: bold;
             color: #e0e0e0;
@@ -353,6 +360,10 @@
             background: #f7931a;
         }
 
+        .legend-color.hyperliquid {
+            background: #97FCE4;
+        }
+
         .legend-label {
             color: #ccc;
             font-size: 10px;
@@ -453,6 +464,11 @@
                                 <span class="legend-color bybit"></span>
                                 <span class="legend-label">Bybit:</span>
                                 <span class="legend-value" id="bybitValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color hyperliquid"></span>
+                                <span class="legend-label">Hyperliquid:</span>
+                                <span class="legend-value" id="hyperliquidValue">--</span>
                             </div>
                         </div>
                     </div>

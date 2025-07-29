@@ -8,7 +8,7 @@ class FuturesArbitrageScanner {
         this.connectedExchanges = new Set();
         
         this.chart = null;
-        this.chartData = [[], [], []]; // timestamps, binance, bybit
+        this.chartData = [[], [], [], []]; // timestamps, binance, bybit, hyperliquid
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
@@ -55,6 +55,7 @@ class FuturesArbitrageScanner {
         const now = Date.now() / 1000;
         this.chartData = [
             [now - 60, now],
+            [null, null],
             [null, null],
             [null, null]
         ];
@@ -138,6 +139,13 @@ class FuturesArbitrageScanner {
                 {
                     label: "Bybit Futures",
                     stroke: "#f7931a",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + v.toFixed(2),
+                },
+                {
+                    label: "Hyperliquid Futures",
+                    stroke: "#97FCE4",
                     width: 2,
                     spanGaps: false,
                     value: (_, v) => v == null ? '' : '$' + v.toFixed(2),
@@ -316,14 +324,24 @@ class FuturesArbitrageScanner {
             return;
         }
 
+        const exchangeColors = {
+            'binance_futures': '#f0b90b',
+            'bybit_futures': '#f7931a',
+            'hyperliquid_futures': '#97FCE4'
+        };
+
         let html = '';
         for (const [exchange, data] of this.exchanges.entries()) {
             const changeClass = data.change >= 0 ? 'up' : 'down';
             const changeSymbol = data.change >= 0 ? '↑' : '↓';
+            const color = exchangeColors[exchange] || '#888';
             
             html += `
                 <div class="exchange-item">
-                    <div class="exchange-name">${exchange.replace('_', ' ')}</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="exchange-color-dot" style="background: ${color};"></div>
+                        <div class="exchange-name">${exchange.replace('_', ' ')}</div>
+                    </div>
                     <div>
                         <span class="exchange-price">$${data.price.toFixed(2)}</span>
                         <span class="price-change ${changeClass}">
@@ -358,29 +376,35 @@ class FuturesArbitrageScanner {
 
         const binanceHistory = this.priceHistory.get('binance_futures') || [];
         const bybitHistory = this.priceHistory.get('bybit_futures') || [];
+        const hyperliquidHistory = this.priceHistory.get('hyperliquid_futures') || [];
         
-        if (binanceHistory.length === 0 && bybitHistory.length === 0) return;
+        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0) return;
 
         // Create combined timestamp array
         const allTimestamps = new Set();
         binanceHistory.forEach(point => allTimestamps.add(point[0]));
         bybitHistory.forEach(point => allTimestamps.add(point[0]));
+        hyperliquidHistory.forEach(point => allTimestamps.add(point[0]));
         
         const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
         
         // Create price arrays with forward-filled values for missing data points
         const binancePrices = [];
         const bybitPrices = [];
+        const hyperliquidPrices = [];
         
         const binanceMap = new Map(binanceHistory);
         const bybitMap = new Map(bybitHistory);
+        const hyperliquidMap = new Map(hyperliquidHistory);
         
         let lastBinancePrice = null;
         let lastBybitPrice = null;
+        let lastHyperliquidPrice = null;
         
         timestamps.forEach(timestamp => {
             const binancePrice = binanceMap.get(timestamp);
             const bybitPrice = bybitMap.get(timestamp);
+            const hyperliquidPrice = hyperliquidMap.get(timestamp);
             
             if (binancePrice !== undefined) {
                 lastBinancePrice = binancePrice;
@@ -388,12 +412,16 @@ class FuturesArbitrageScanner {
             if (bybitPrice !== undefined) {
                 lastBybitPrice = bybitPrice;
             }
+            if (hyperliquidPrice !== undefined) {
+                lastHyperliquidPrice = hyperliquidPrice;
+            }
             
             binancePrices.push(lastBinancePrice);
             bybitPrices.push(lastBybitPrice);
+            hyperliquidPrices.push(lastHyperliquidPrice);
         });
 
-        this.chartData = [timestamps, binancePrices, bybitPrices];
+        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices];
         this.chart.setData(this.chartData);
         this.lastChartUpdate = performance.now();
     }
@@ -443,7 +471,7 @@ class FuturesArbitrageScanner {
         this.priceHistory.clear();
         this.arbitrageAlerts = [];
         
-        this.chartData = [[], [], []];
+        this.chartData = [[], [], [], []];
         if (this.chart) {
             this.chart.setData(this.chartData);
         }
@@ -479,6 +507,7 @@ class FuturesArbitrageScanner {
         const legendTime = document.getElementById('legendTime');
         const binanceValue = document.getElementById('binanceValue');
         const bybitValue = document.getElementById('bybitValue');
+        const hyperliquidValue = document.getElementById('hyperliquidValue');
 
         if (u.cursor.idx === null) {
             legend.classList.remove('visible');
@@ -492,6 +521,7 @@ class FuturesArbitrageScanner {
         const timestamp = u.data[0][idx];
         const binancePrice = u.data[1][idx];
         const bybitPrice = u.data[2][idx];
+        const hyperliquidPrice = u.data[3][idx];
 
         // Format timestamp with milliseconds
         if (timestamp) {
@@ -506,7 +536,9 @@ class FuturesArbitrageScanner {
         // Update values
         binanceValue.textContent = binancePrice ? `$${binancePrice.toFixed(2)}` : '--';
         bybitValue.textContent = bybitPrice ? `$${bybitPrice.toFixed(2)}` : '--';
+        hyperliquidValue.textContent = hyperliquidPrice ? `$${hyperliquidPrice.toFixed(2)}` : '--';
     }
+
 
     startFPSCounter() {
         const fpsCounter = document.getElementById('fpsCounter');
