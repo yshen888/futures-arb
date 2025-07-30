@@ -3,9 +3,13 @@ class FuturesArbitrageScanner {
         this.currentSymbol = 'BTCUSDT';
         this.exchanges = new Map();
         this.priceHistory = new Map();
-        this.arbitrageAlerts = [];
+        this.arbitrageOpportunities = [];
+        this.currentSpreads = new Map();
         this.maxHistoryPoints = 1000;
+        this.maxOpportunities = 50;
         this.connectedExchanges = new Set();
+        this.currentSort = { field: 'timestamp', direction: 'desc' };
+        this.minProfitFilter = 0.1;
         
         this.chart = null;
         this.chartData = [[], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, kraken
@@ -29,6 +33,7 @@ class FuturesArbitrageScanner {
         this.connectWebSocket();
         this.startFPSCounter();
         this.startRenderLoop();
+        this.setupOpportunitiesTable();
     }
 
     setupEventListeners() {
@@ -37,7 +42,6 @@ class FuturesArbitrageScanner {
             this.changeSymbol(e.target.value.toUpperCase());
         });
 
-
         window.addEventListener('resize', () => {
             if (this.chart) {
                 this.chart.setSize({
@@ -45,6 +49,20 @@ class FuturesArbitrageScanner {
                     height: this.getChartHeight()
                 });
             }
+        });
+
+        // Opportunities table event listeners
+        const minProfitFilter = document.getElementById('minProfitFilter');
+        minProfitFilter.addEventListener('input', (e) => {
+            this.minProfitFilter = parseFloat(e.target.value) || 0;
+            this.updateOpportunitiesTable();
+            this.updateSpreadsMatrix(); // Update matrix highlighting
+        });
+
+        const clearButton = document.getElementById('clearOpportunities');
+        clearButton.addEventListener('click', () => {
+            this.arbitrageOpportunities = [];
+            this.updateOpportunitiesTable();
         });
     }
 
@@ -269,6 +287,8 @@ class FuturesArbitrageScanner {
             this.handlePriceUpdate(data);
         } else if (data.type === 'arbitrage') {
             this.handleArbitrageOpportunity(data.opportunity);
+        } else if (data.type === 'spreads') {
+            this.handleSpreadsUpdate(data);
         }
     }
 
@@ -463,41 +483,206 @@ class FuturesArbitrageScanner {
         this.lastChartUpdate = performance.now();
     }
 
-    handleArbitrageOpportunity(opportunity) {
-        this.arbitrageAlerts.unshift(opportunity);
-        
-        if (this.arbitrageAlerts.length > 10) {
-            this.arbitrageAlerts = this.arbitrageAlerts.slice(0, 10);
-        }
-
-        this.updateArbitrageAlerts();
+    setupOpportunitiesTable() {
+        // Setup table sorting
+        const headers = document.querySelectorAll('.opportunities-table th.sortable');
+        headers.forEach(header => {
+            header.addEventListener('click', () => {
+                const field = header.dataset.sort;
+                if (this.currentSort.field === field) {
+                    this.currentSort.direction = this.currentSort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.currentSort.field = field;
+                    this.currentSort.direction = 'desc';
+                }
+                this.updateSortHeaders();
+                this.updateOpportunitiesTable();
+            });
+        });
     }
 
-    updateArbitrageAlerts() {
-        const alertsContainer = document.getElementById('arbitrageAlerts');
+    updateSortHeaders() {
+        const headers = document.querySelectorAll('.opportunities-table th.sortable');
+        headers.forEach(header => {
+            header.classList.remove('sort-asc', 'sort-desc');
+            if (header.dataset.sort === this.currentSort.field) {
+                header.classList.add(this.currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        });
+    }
+
+    handleArbitrageOpportunity(opportunity) {
+        // Add unique ID for tracking
+        opportunity.id = Date.now() + Math.random();
         
-        if (this.arbitrageAlerts.length === 0) {
-            alertsContainer.innerHTML = '<div class="loading">No opportunities detected</div>';
+        this.arbitrageOpportunities.unshift(opportunity);
+        
+        if (this.arbitrageOpportunities.length > this.maxOpportunities) {
+            this.arbitrageOpportunities = this.arbitrageOpportunities.slice(0, this.maxOpportunities);
+        }
+
+        this.updateOpportunitiesTable();
+    }
+
+    updateOpportunitiesTable() {
+        const tbody = document.getElementById('opportunitiesTableBody');
+        const stats = document.getElementById('opportunitiesStats');
+        
+        // Filter opportunities
+        const filteredOpportunities = this.arbitrageOpportunities.filter(opp =>
+            opp.profit_pct >= this.minProfitFilter
+        );
+
+        // Sort opportunities
+        const sortedOpportunities = [...filteredOpportunities].sort((a, b) => {
+            let aVal = a[this.currentSort.field];
+            let bVal = b[this.currentSort.field];
+            
+            // Handle different data types
+            if (this.currentSort.field === 'timestamp') {
+                aVal = new Date(aVal);
+                bVal = new Date(bVal);
+            } else if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            
+            if (this.currentSort.direction === 'asc') {
+                return aVal > bVal ? 1 : -1;
+            } else {
+                return aVal < bVal ? 1 : -1;
+            }
+        });
+
+        // Update stats
+        stats.textContent = `${filteredOpportunities.length} alerts`;
+
+        if (sortedOpportunities.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="opportunities-empty">No alerts match current filters</td></tr>';
             return;
         }
 
+        // Generate table rows
         let html = '';
-        this.arbitrageAlerts.forEach(alert => {
-            const timestamp = new Date(alert.timestamp).toLocaleTimeString();
+        sortedOpportunities.forEach((opp, index) => {
+            const isRecent = Date.now() - opp.timestamp < 5000; // Fresh for 5 seconds
+            const profitClass = this.getProfitClass(opp.profit_pct);
+            const timeStr = this.formatTime(opp.timestamp);
+            
             html += `
-                <div class="arbitrage-alert">
-                    <div class="opportunity-symbol">${alert.symbol}</div>
-                    <div class="profit">+${alert.profit_pct.toFixed(3)}% profit</div>
-                    <div class="trade-info">
-                        <div>Buy: ${alert.buy_exchange} @ $${alert.buy_price.toFixed(2)}</div>
-                        <div>Sell: ${alert.sell_exchange} @ $${alert.sell_price.toFixed(2)}</div>
-                    </div>
-                    <div style="font-size: 10px; color: #666; margin-top: 4px;">${timestamp}</div>
-                </div>
+                <tr class="${isRecent ? 'fresh' : ''}" data-id="${opp.id}">
+                    <td class="symbol-cell">${opp.symbol}</td>
+                    <td class="profit-cell ${profitClass}">${opp.profit_pct.toFixed(3)}%</td>
+                    <td class="exchange-cell">${this.formatExchangeName(opp.buy_exchange)}</td>
+                    <td class="price-cell">$${opp.buy_price.toFixed(2)}</td>
+                    <td class="exchange-cell">${this.formatExchangeName(opp.sell_exchange)}</td>
+                    <td class="price-cell">$${opp.sell_price.toFixed(2)}</td>
+                    <td class="time-cell">${timeStr}</td>
+                </tr>
             `;
         });
         
-        alertsContainer.innerHTML = html;
+        tbody.innerHTML = html;
+    }
+
+    getProfitClass(profitPct) {
+        if (profitPct >= 0.5) return 'high';
+        if (profitPct >= 0.2) return 'medium';
+        return 'low';
+    }
+
+    formatExchangeName(exchange) {
+        return exchange.replace('_futures', '').replace('_', ' ').toUpperCase();
+    }
+
+    handleSpreadsUpdate(data) {
+        if (data.symbol === this.currentSymbol) {
+            this.currentSpreads.set(data.symbol, {
+                spreads: data.spreads,
+                prices: data.prices,
+                timestamp: Date.now()
+            });
+            this.updateSpreadsMatrix();
+        }
+    }
+
+    updateSpreadsMatrix() {
+        const matrixContainer = document.getElementById('spreadsMatrix');
+        const spreadData = this.currentSpreads.get(this.currentSymbol);
+        
+        if (!spreadData || !spreadData.spreads) {
+            matrixContainer.innerHTML = '<div class="loading">Waiting for price data...</div>';
+            return;
+        }
+
+        const exchanges = Object.keys(spreadData.spreads);
+        if (exchanges.length === 0) {
+            matrixContainer.innerHTML = '<div class="loading">No exchange data available</div>';
+            return;
+        }
+
+        // Create matrix HTML
+        let html = '';
+        
+        // Header row
+        html += '<div class="spread-header"></div>'; // Empty corner
+        exchanges.forEach(sellExchange => {
+            const shortName = this.getShortExchangeName(sellExchange);
+            html += `<div class="spread-header">${shortName}</div>`;
+        });
+
+        // Data rows
+        exchanges.forEach(buyExchange => {
+            const shortBuyName = this.getShortExchangeName(buyExchange);
+            html += `<div class="spread-row-header">${shortBuyName}</div>`;
+            
+            exchanges.forEach(sellExchange => {
+                if (buyExchange === sellExchange) {
+                    html += '<div class="spread-cell neutral">-</div>';
+                } else {
+                    const spread = spreadData.spreads[buyExchange][sellExchange];
+                    const spreadClass = this.getSpreadClass(spread);
+                    const displaySpread = spread >= 0 ? `+${spread.toFixed(2)}%` : `${spread.toFixed(2)}%`;
+                    html += `<div class="spread-cell ${spreadClass}" title="Buy ${this.formatExchangeName(buyExchange)} → Sell ${this.formatExchangeName(sellExchange)}: ${displaySpread}">${displaySpread}</div>`;
+                }
+            });
+        });
+
+        matrixContainer.innerHTML = html;
+    }
+
+    getShortExchangeName(exchange) {
+        const names = {
+            'binance_futures': 'BIN',
+            'bybit_futures': 'BYB',
+            'hyperliquid_futures': 'HYP',
+            'kraken_futures': 'KRK'
+        };
+        return names[exchange] || exchange.substring(0, 3).toUpperCase();
+    }
+
+    getSpreadClass(spread) {
+        if (spread >= this.minProfitFilter) {
+            return 'opportunity';
+        } else if (spread > 0) {
+            return 'positive';
+        } else {
+            return 'negative';
+        }
+    }
+
+    formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        
+        if (diffMs < 60000) { // Less than 1 minute
+            return Math.floor(diffMs / 1000) + 's';
+        } else if (diffMs < 3600000) { // Less than 1 hour
+            return Math.floor(diffMs / 60000) + 'm';
+        } else {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
     }
 
     changeSymbol(newSymbol) {
@@ -506,7 +691,7 @@ class FuturesArbitrageScanner {
         this.currentSymbol = newSymbol;
         this.exchanges.clear();
         this.priceHistory.clear();
-        this.arbitrageAlerts = [];
+        this.arbitrageOpportunities = [];
         
         this.chartData = [[], [], [], [], [], []];
         if (this.chart) {
@@ -515,7 +700,9 @@ class FuturesArbitrageScanner {
 
         this.updateChartTitle();
         this.updateExchangeList();
-        this.updateArbitrageAlerts();
+        this.updateOpportunitiesTable();
+        this.currentSpreads.clear();
+        this.updateSpreadsMatrix();
         
         document.getElementById('symbolStatus').textContent = newSymbol;
         

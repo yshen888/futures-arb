@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -22,21 +23,24 @@ type ArbitrageOpportunity struct {
 }
 
 type FuturesScanner struct {
-	prices       map[string]map[string]float64
-	pricesMutex  sync.RWMutex
-	wsClients    map[*websocket.Conn]bool
-	clientsMutex sync.RWMutex
-	upgrader     websocket.Upgrader
-	priceChan    chan exchanges.PriceData
-	tradeChan    chan exchanges.TradeData
+	prices           map[string]map[string]float64
+	pricesMutex      sync.RWMutex
+	wsClients        map[*websocket.Conn]bool
+	clientsMutex     sync.RWMutex
+	upgrader         websocket.Upgrader
+	priceChan        chan exchanges.PriceData
+	tradeChan        chan exchanges.TradeData
+	lastOpportunity  map[string]time.Time // Track last alert per symbol
+	opportunityMutex sync.RWMutex
 }
 
 func NewFuturesScanner() *FuturesScanner {
 	return &FuturesScanner{
-		prices:    make(map[string]map[string]float64),
-		wsClients: make(map[*websocket.Conn]bool),
-		priceChan: make(chan exchanges.PriceData, 1000),
-		tradeChan: make(chan exchanges.TradeData, 1000),
+		prices:          make(map[string]map[string]float64),
+		wsClients:       make(map[*websocket.Conn]bool),
+		priceChan:       make(chan exchanges.PriceData, 1000),
+		tradeChan:       make(chan exchanges.TradeData, 1000),
+		lastOpportunity: make(map[string]time.Time),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -104,22 +108,41 @@ func (s *FuturesScanner) checkArbitrage(symbol string) {
 
 	profitPct := ((maxPrice - minPrice) / minPrice) * 100
 
-	if profitPct > 0.05 {
-		opportunity := ArbitrageOpportunity{
-			Symbol:       symbol,
-			BuyExchange:  minExchange,
-			SellExchange: maxExchange,
-			BuyPrice:     minPrice,
-			SellPrice:    maxPrice,
-			ProfitPct:    profitPct,
-			Timestamp:    time.Now().UnixMilli(),
+	// Only alert if profit is significant (>0.1%) and we haven't alerted recently
+	if profitPct > 0.1 {
+		opportunityKey := fmt.Sprintf("%s_%s_%s", symbol, minExchange, maxExchange)
+		
+		s.opportunityMutex.RLock()
+		lastAlert, exists := s.lastOpportunity[opportunityKey]
+		s.opportunityMutex.RUnlock()
+		
+		now := time.Now()
+		// Only send alert if it's been more than 30 seconds since last alert for this pair
+		// or if profit increased significantly (>0.05% more than before)
+		if !exists || now.Sub(lastAlert) > 30*time.Second {
+			s.opportunityMutex.Lock()
+			s.lastOpportunity[opportunityKey] = now
+			s.opportunityMutex.Unlock()
+
+			opportunity := ArbitrageOpportunity{
+				Symbol:       symbol,
+				BuyExchange:  minExchange,
+				SellExchange: maxExchange,
+				BuyPrice:     minPrice,
+				SellPrice:    maxPrice,
+				ProfitPct:    profitPct,
+				Timestamp:    now.UnixMilli(),
+			}
+
+			log.Printf("ARBITRAGE: %s %.3f%% | Buy %s@%.2f, Sell %s@%.2f",
+				symbol, profitPct, minExchange, minPrice, maxExchange, maxPrice)
+
+			s.broadcastOpportunity(opportunity)
 		}
-
-		log.Printf("ARBITRAGE: %s %.3f%% | Buy %s@%.2f, Sell %s@%.2f",
-			symbol, profitPct, minExchange, minPrice, maxExchange, maxPrice)
-
-		s.broadcastOpportunity(opportunity)
 	}
+	
+	// Always broadcast current spreads for the spread matrix
+	s.broadcastSpreads(symbol, exchangePrices)
 }
 
 func (s *FuturesScanner) broadcastOpportunity(opportunity ArbitrageOpportunity) {
@@ -129,6 +152,40 @@ func (s *FuturesScanner) broadcastOpportunity(opportunity ArbitrageOpportunity) 
 	message := map[string]interface{}{
 		"type":        "arbitrage",
 		"opportunity": opportunity,
+	}
+
+	for client := range s.wsClients {
+		err := client.WriteJSON(message)
+		if err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			client.Close()
+			delete(s.wsClients, client)
+		}
+	}
+}
+
+func (s *FuturesScanner) broadcastSpreads(symbol string, exchangePrices map[string]float64) {
+	s.clientsMutex.RLock()
+	defer s.clientsMutex.RUnlock()
+
+	// Calculate all pairwise spreads
+	spreads := make(map[string]map[string]float64)
+	
+	for buyExchange, buyPrice := range exchangePrices {
+		spreads[buyExchange] = make(map[string]float64)
+		for sellExchange, sellPrice := range exchangePrices {
+			if buyExchange != sellExchange {
+				spreadPct := ((sellPrice - buyPrice) / buyPrice) * 100
+				spreads[buyExchange][sellExchange] = spreadPct
+			}
+		}
+	}
+
+	message := map[string]interface{}{
+		"type":    "spreads",
+		"symbol":  symbol,
+		"spreads": spreads,
+		"prices":  exchangePrices,
 	}
 
 	for client := range s.wsClients {

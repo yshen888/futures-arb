@@ -25,9 +25,8 @@
             display: grid;
             grid-template-areas:
                 "header header"
-                "sidebar main"
                 "sidebar main";
-            grid-template-columns: 320px 1fr;
+            grid-template-columns: 380px 1fr;
             grid-template-rows: 60px 1fr;
             height: 100vh;
             gap: 1px;
@@ -123,6 +122,7 @@
             display: flex;
             flex-direction: column;
         }
+
 
         .panel {
             margin: 10px;
@@ -244,41 +244,271 @@
         }
 
 
-        .arbitrage-alerts {
-            max-height: 300px;
-            overflow-y: auto;
+        .opportunities-table-container {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        .arbitrage-alert {
-            background: rgba(255, 68, 68, 0.1);
-            border: 1px solid #ff4444;
-            border-radius: 4px;
-            padding: 12px;
-            margin-bottom: 8px;
-            animation: pulse 2s infinite;
+        .opportunities-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            background: transparent;
         }
 
-        .arbitrage-alert .opportunity-symbol {
+        .opportunities-table thead {
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .opportunities-table th {
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            border-right: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .opportunities-table th:hover {
+            background: #222;
+        }
+
+        .opportunities-table th:last-child {
+            border-right: none;
+        }
+
+        .opportunities-table th.sortable::after {
+            content: '↕';
+            margin-left: 4px;
+            opacity: 0.5;
+        }
+
+        .opportunities-table th.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+            color: #00ff88;
+        }
+
+        .opportunities-table th.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+            color: #00ff88;
+        }
+
+        .opportunities-table tbody {
+            background: transparent;
+        }
+
+        .opportunities-table tr {
+            border-bottom: 1px solid #222;
+            transition: background 0.2s;
+        }
+
+        .opportunities-table tr:hover {
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .opportunities-table tr.fresh {
+            background: rgba(0, 255, 136, 0.1);
+            animation: fadeToNormal 3s ease-out forwards;
+        }
+
+        @keyframes fadeToNormal {
+            0% {
+                background: rgba(0, 255, 136, 0.2);
+            }
+
+            100% {
+                background: transparent;
+            }
+        }
+
+        .opportunities-table td {
+            padding: 6px;
+            border-right: 1px solid #222;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .opportunities-table td:last-child {
+            border-right: none;
+        }
+
+        .symbol-cell {
             color: #00ff88;
             font-weight: bold;
-            font-size: 14px;
         }
 
-        .arbitrage-alert .profit {
-            color: #ff4444;
+        .profit-cell {
+            color: #ff6b6b;
             font-weight: bold;
-            font-size: 16px;
+            text-align: right;
         }
 
-        .arbitrage-alert .trade-info {
+        .profit-cell.high {
+            color: #ff4444;
+        }
+
+        .profit-cell.medium {
+            color: #ff8844;
+        }
+
+        .profit-cell.low {
+            color: #ffaa44;
+        }
+
+        .exchange-cell {
+            color: #ccc;
+            font-size: 10px;
+        }
+
+        .price-cell {
+            color: #e0e0e0;
+            text-align: right;
+            font-weight: 500;
+        }
+
+        .time-cell {
+            color: #666;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        .opportunities-table-body {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .opportunities-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100px;
+            color: #666;
+            font-size: 11px;
+            font-style: italic;
+        }
+
+        .opportunities-controls {
+            padding: 8px 12px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
             display: flex;
             justify-content: space-between;
-            margin-top: 8px;
-            font-size: 11px;
-            color: #ccc;
+            align-items: center;
+            gap: 12px;
         }
 
-        @keyframes pulse {
+        .opportunities-filter {
+            background: #222;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 10px;
+            width: 80px;
+        }
+
+        .opportunities-filter:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+
+        .opportunities-stats {
+            color: #888;
+            font-size: 10px;
+        }
+
+        .clear-opportunities {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .clear-opportunities:hover {
+            background: #444;
+        }
+
+        .spreads-matrix {
+            display: grid;
+            grid-template-columns: 80px repeat(4, 1fr);
+            gap: 2px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .spread-header {
+            background: #1a1a1a;
+            padding: 6px 4px;
+            text-align: center;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            font-size: 9px;
+            border-radius: 2px;
+        }
+
+        .spread-row-header {
+            background: #1a1a1a;
+            padding: 6px 4px;
+            text-align: center;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            font-size: 9px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .spread-cell {
+            background: #222;
+            padding: 6px 4px;
+            text-align: center;
+            border-radius: 2px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .spread-cell.positive {
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+        }
+
+        .spread-cell.negative {
+            background: rgba(255, 68, 68, 0.1);
+            color: #ff4444;
+        }
+
+        .spread-cell.neutral {
+            background: #333;
+            color: #666;
+        }
+
+        .spread-cell.opportunity {
+            background: rgba(255, 165, 0, 0.2);
+            color: #ffa500;
+            animation: pulse-opportunity 2s infinite;
+        }
+
+        @keyframes pulse-opportunity {
 
             0%,
             100% {
@@ -471,13 +701,51 @@
             </div>
 
             <div class="panel">
-                <div class="panel-header">Arbitrage Alerts</div>
+                <div class="panel-header">Current Spreads</div>
                 <div class="panel-content">
-                    <div class="arbitrage-alerts scrollbar" id="arbitrageAlerts">
-                        <div class="loading">Waiting for opportunities</div>
+                    <div id="spreadsMatrix" class="spreads-matrix">
+                        <div class="loading">Waiting for price data...</div>
                     </div>
                 </div>
             </div>
+
+            <div class="panel">
+                <div class="panel-header">Arbitrage Alerts</div>
+                <div class="opportunities-controls">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label style="font-size: 10px; color: #888;">Min %:</label>
+                        <input type="number" id="minProfitFilter" class="opportunities-filter" placeholder="0.1"
+                            step="0.01" min="0" value="0.1">
+                    </div>
+                    <div class="opportunities-stats" id="opportunitiesStats">0 alerts</div>
+                    <button class="clear-opportunities" id="clearOpportunities">Clear</button>
+                </div>
+                <div class="opportunities-table-container">
+                    <table class="opportunities-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="symbol">Symbol</th>
+                                <th class="sortable" data-sort="profit">Profit %</th>
+                                <th class="sortable" data-sort="buy_exchange">Buy</th>
+                                <th class="sortable" data-sort="buy_price">Buy $</th>
+                                <th class="sortable" data-sort="sell_exchange">Sell</th>
+                                <th class="sortable" data-sort="sell_price">Sell $</th>
+                                <th class="sortable" data-sort="timestamp">Time</th>
+                            </tr>
+                        </thead>
+                    </table>
+                    <div class="opportunities-table-body scrollbar">
+                        <table class="opportunities-table">
+                            <tbody id="opportunitiesTableBody">
+                                <tr>
+                                    <td colspan="7" class="opportunities-empty">No alerts yet...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="main">
