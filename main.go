@@ -266,7 +266,7 @@ func (s *FuturesScanner) handleWebSocket(w http.ResponseWriter, r *http.Request)
 func main() {
 	scanner := NewFuturesScanner()
 
-	symbols := []string{"BTCUSDT"}
+	symbols := []string{"BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"}
 
 	// Start processing goroutines
 	go scanner.processPrices()
@@ -276,7 +276,7 @@ func main() {
 	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	// go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan) // Disabled for now
 	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectGateFutures(symbols, scanner.priceChan, scanner.tradeChan)
 

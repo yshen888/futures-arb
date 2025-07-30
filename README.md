@@ -1,68 +1,98 @@
-# ⚡ Futures Arbitrage & CVD Scanner
+# ⚡ Futures Arbitrage Scanner
 
-This project is a high-performance, real-time cryptocurrency futures arbitrage scanner and Cumulative Volume Delta (CVD) analysis tool. It connects to multiple exchanges simultaneously, identifies arbitrage opportunities, and provides insights into market microstructure through live CVD tracking.
+A high-performance, real-time cryptocurrency futures arbitrage scanner that connects to multiple exchanges simultaneously to identify profitable trading opportunities across different platforms.
 
-## Why Market Microstructure Data Matters
+## Why Arbitrage Scanning Matters
 
-In the world of high-frequency trading, understanding market microstructure is crucial. It's not just about the price, but *how* the price is formed. This tool focuses on two key aspects:
+In cryptocurrency markets, price discrepancies between exchanges create profitable arbitrage opportunities. This tool focuses on:
 
-1.  **Arbitrage Opportunities**: By streaming data from multiple exchanges (Binance, Bybit, Hyperliquid, Kraken, Deribit), the scanner can instantly spot price discrepancies. These fleeting opportunities, often lasting for milliseconds, can be capitalized on by advanced trading algorithms.
+1. **Real-Time Price Monitoring**: Streams live price data from multiple major exchanges (Binance, Bybit, Hyperliquid, Kraken, OKX, Gate.io) to detect price differences instantly.
 
-2.  **Cumulative Volume Delta (CVD)**: CVD is a powerful indicator that tracks the net difference between buying and selling volume. It provides a real-time view of market sentiment and order flow.
-    *   **Rising CVD**: Indicates aggressive buying pressure, suggesting bullish sentiment.
-    *   **Falling CVD**: Indicates aggressive selling pressure, suggesting bearish sentiment.
-    *   **Divergences**: When price and CVD move in opposite directions, it can signal a potential trend reversal.
+2. **Arbitrage Opportunity Detection**: Identifies profitable opportunities where you can buy on one exchange and sell on another for a guaranteed profit, accounting for fees and slippage.
 
-This tool provides the foundational data for developing sophisticated trading strategies based on these market microstructure concepts.
+3. **Spread Analysis**: Provides a comprehensive spread matrix showing price differences between all exchange pairs, helping traders understand market dynamics.
+
+This tool provides the foundational data for developing sophisticated arbitrage trading strategies in the fast-moving cryptocurrency futures markets.
 
 ## Features
 
--   **Multi-Exchange Connectivity**: Connects to Binance, Bybit, Hyperliquid, Kraken, and Deribit futures markets via WebSockets.
--   **Real-Time Arbitrage Detection**: Identifies and displays arbitrage opportunities with a profit potential greater than 0.05%.
--   **Live CVD Analysis**: Calculates and visualizes CVD for each exchange in real-time.
--   **Interactive Frontend**: A clean and responsive UI built with vanilla JavaScript and uPlot for high-performance charting.
--   **Scalable Go Backend**: A concurrent and efficient backend that can handle high-throughput data streams.
+- **Multi-Exchange Connectivity**: Connects to 5 major exchanges (Binance, Bybit, Hyperliquid, OKX, Gate.io) via WebSockets
+- **Real-Time Arbitrage Detection**: Identifies and displays arbitrage opportunities with configurable profit thresholds
+- **Interactive Spread Matrix**: Visual matrix showing real-time spreads between all exchange pairs
+- **Multi-Symbol Support**: Monitor BTCUSDT, ETHUSDT, XRPUSDT, and SOLUSDT with easy symbol switching
+- **Smart Price Formatting**: Adaptive decimal precision based on asset price ranges
+- **Live Price Charts**: Real-time price visualization with interactive legends
+- **Professional Dashboard**: Clean, responsive UI optimized for trading professionals
 
 ## Architecture
 
 ### Go Backend
 
-The backend is built in Go, leveraging its powerful concurrency features for optimal performance.
+The backend is built in Go, leveraging its powerful concurrency features for optimal performance:
 
--   **Concurrent Data Streams**: Each exchange connection runs in its own goroutine, allowing for simultaneous data ingestion without blocking.
--   **Channels for Communication**: Go channels are used to safely and efficiently pass price and trade data from the exchange connectors to the main processing hub.
--   **Mutex for State Management**: Mutexes are used to protect shared data structures (like the price and CVD maps), ensuring thread safety.
--   **WebSocket Broadcasting**: A central hub efficiently broadcasts processed data (prices, arbitrage opportunities, CVD) to all connected frontend clients.
-
-This architecture is highly scalable, allowing for the easy addition of new exchanges and data processing modules.
+- **Concurrent Data Streams**: Each exchange connection runs in its own goroutine for simultaneous data ingestion
+- **Channels for Communication**: Go channels safely pass price and trade data between exchange connectors and processors
+- **Thread-Safe State Management**: Mutexes protect shared data structures ensuring data integrity
+- **WebSocket Broadcasting**: Efficient real-time data distribution to all connected clients
+- **Scalable Design**: Easy addition of new exchanges and trading pairs
 
 ### Frontend
 
-The frontend is a single-page application (SPA) built with vanilla JavaScript, HTML, and CSS.
+Single-page application built with vanilla JavaScript for maximum performance:
 
--   **uPlot for Charting**: We use uPlot, a fast and memory-efficient charting library, to render the real-time price and CVD data.
--   **WebSocket Client**: The frontend maintains a persistent WebSocket connection to the Go backend to receive live data.
--   **Dynamic UI**: The UI is dynamically updated in real-time as new data arrives from the backend.
--   **Minimalist Design**: The focus is on a clean, data-rich interface that is both performant and easy to understand.
+- **uPlot Charting**: Fast, memory-efficient real-time price visualization
+- **WebSocket Client**: Persistent connection for live data streaming
+- **Dynamic Updates**: Real-time UI updates as new data arrives
+- **Professional Interface**: Clean, data-focused design optimized for traders
 
 ## Quick Start
 
-1.  **Run the backend server**:
-    ```bash
-    go run main.go
-    ```
+1. **Run the backend server**:
+   ```bash
+   go run main.go
+   ```
 
-2.  **Open your browser**:
-    Navigate to `http://localhost:8080`
+2. **Open your browser**:
+   Navigate to `http://localhost:8080`
 
-## Monitored Symbols
+## Supported Trading Pairs
 
-Currently, the scanner is configured to monitor `BTCUSDT`. This can be easily changed in the `main.go` file.
+The scanner currently supports:
+- **BTCUSDT** - Bitcoin perpetual futures
+- **ETHUSDT** - Ethereum perpetual futures
+- **XRPUSDT** - XRP perpetual futures
+- **SOLUSDT** - Solana perpetual futures
+
+Symbol selection is available through the dropdown in the dashboard.
+
+## Exchange Coverage
+
+- **Binance Futures** - World's largest crypto derivatives exchange
+- **Bybit Futures** - Major derivatives platform with high liquidity
+- **Hyperliquid** - Decentralized perpetual futures exchange
+- **OKX Futures** - Global exchange with advanced trading features
+- **Gate.io Futures** - Comprehensive derivatives platform
+
+*Note: Kraken Futures support is temporarily disabled but can be re-enabled in the future.*
+
+## Configuration
+
+Arbitrage detection threshold can be adjusted in the frontend (default: 0.05%). The system automatically:
+- Filters opportunities below the minimum profit threshold
+- Prevents spam alerts with intelligent rate limiting
+- Calculates spreads accounting for exchange-specific factors
 
 ## Testing
 
-To run the backend tests, use the following command:
+Run the backend tests:
 
 ```bash
 go test -v
 ```
+
+## Performance
+
+- **Sub-millisecond latency** for arbitrage detection
+- **High-frequency updates** with throttled UI rendering
+- **Memory efficient** data structures and chart rendering
+- **Concurrent processing** of multiple exchange feeds

@@ -447,10 +447,12 @@
 
         .spreads-matrix {
             display: grid;
-            grid-template-columns: 80px repeat(6, 1fr);
+            grid-template-columns: 60px repeat(5, 1fr);
             gap: 2px;
             font-size: 10px;
             font-family: 'JetBrains Mono', monospace;
+            width: 100%;
+            overflow: hidden;
         }
 
         .spread-header {
@@ -694,7 +696,12 @@
                 <div class="panel-header">Symbol</div>
                 <div class="panel-content">
                     <div class="symbol-selector">
-                        <input type="text" id="symbolInput" class="symbol-input" placeholder="BTCUSDT" value="BTCUSDT">
+                        <select id="symbolSelect" class="symbol-input">
+                            <option value="BTCUSDT">BTCUSDT</option>
+                            <option value="ETHUSDT">ETHUSDT</option>
+                            <option value="XRPUSDT">XRPUSDT</option>
+                            <option value="SOLUSDT">SOLUSDT</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -761,7 +768,8 @@
                 <div class="chart-header">
                     <div class="chart-title" id="chartTitle">Price Chart - BTCUSDT (Live)</div>
                 </div>
-                <div id="chart" style="flex: 1; padding: 10px 10px 15px 10px; overflow: hidden; position: relative;">
+                <div id="chart"
+                    style="flex: 1; padding: 10px; overflow: hidden; position: relative; box-sizing: border-box;">
                     <div id="chartLegend" class="chart-legend">
                         <div class="legend-time" id="legendTime">--</div>
                         <div class="legend-values" id="legendValues">
@@ -779,11 +787,6 @@
                                 <span class="legend-color hyperliquid"></span>
                                 <span class="legend-label">Hyperliquid:</span>
                                 <span class="legend-value" id="hyperliquidValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color kraken"></span>
-                                <span class="legend-label">Kraken:</span>
-                                <span class="legend-value" id="krakenValue">--</span>
                             </div>
                             <div class="legend-item">
                                 <span class="legend-color okx"></span>
