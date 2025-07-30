@@ -447,7 +447,7 @@
 
         .spreads-matrix {
             display: grid;
-            grid-template-columns: 80px repeat(4, 1fr);
+            grid-template-columns: 80px repeat(5, 1fr);
             gap: 2px;
             font-size: 10px;
             font-family: 'JetBrains Mono', monospace;
@@ -627,6 +627,10 @@
             background: #5a5aff;
         }
 
+        .legend-color.okx {
+            background: #1890ff;
+        }
+
         .legend-label {
             color: #ccc;
             font-size: 10px;
@@ -776,6 +780,11 @@
                                 <span class="legend-color kraken"></span>
                                 <span class="legend-label">Kraken:</span>
                                 <span class="legend-value" id="krakenValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color okx"></span>
+                                <span class="legend-label">OKX:</span>
+                                <span class="legend-value" id="okxValue">--</span>
                             </div>
                         </div>
                     </div>

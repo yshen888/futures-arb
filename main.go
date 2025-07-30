@@ -277,6 +277,7 @@ func main() {
 	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 
