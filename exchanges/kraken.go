@@ -137,7 +137,6 @@ func ConnectKrakenFutures(symbols []string, priceChan chan<- PriceData, tradeCha
 						continue
 					}
 
-					log.Printf("Kraken processing individual trade: %s@%.2f", trade.ProductID, trade.Price)
 					processKrakenTrade(trade.ProductID, trade.Price, trade.Quantity, trade.Side, trade.Timestamp, priceChan, tradeChan)
 				}
 			}
