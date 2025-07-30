@@ -108,8 +108,8 @@ func (s *FuturesScanner) checkArbitrage(symbol string) {
 
 	profitPct := ((maxPrice - minPrice) / minPrice) * 100
 
-	// Only alert if profit is significant (>0.1%) and we haven't alerted recently
-	if profitPct > 0.1 {
+	// Only alert if profit is significant (>0.05%) and we haven't alerted recently
+	if profitPct > 0.05 {
 		opportunityKey := fmt.Sprintf("%s_%s_%s", symbol, minExchange, maxExchange)
 		
 		s.opportunityMutex.RLock()
@@ -117,9 +117,9 @@ func (s *FuturesScanner) checkArbitrage(symbol string) {
 		s.opportunityMutex.RUnlock()
 		
 		now := time.Now()
-		// Only send alert if it's been more than 30 seconds since last alert for this pair
-		// or if profit increased significantly (>0.05% more than before)
-		if !exists || now.Sub(lastAlert) > 30*time.Second {
+		// Only send alert if it's been more than 10 seconds since last alert for this pair
+		// This prevents spam while still allowing frequent updates for crypto markets
+		if !exists || now.Sub(lastAlert) > 10*time.Second {
 			s.opportunityMutex.Lock()
 			s.lastOpportunity[opportunityKey] = now
 			s.opportunityMutex.Unlock()

@@ -9,7 +9,7 @@ class FuturesArbitrageScanner {
         this.maxOpportunities = 50;
         this.connectedExchanges = new Set();
         this.currentSort = { field: 'timestamp', direction: 'desc' };
-        this.minProfitFilter = 0.1;
+        this.minProfitFilter = 0.05;
         
         this.chart = null;
         this.chartData = [[], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, kraken
