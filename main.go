@@ -279,6 +279,7 @@ func main() {
 	// go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan) // Disabled for now
 	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectGateFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectParadexFutures(symbols, scanner.priceChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 
