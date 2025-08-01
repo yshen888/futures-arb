@@ -447,7 +447,7 @@
 
         .spreads-matrix {
             display: grid;
-            grid-template-columns: 60px repeat(5, 1fr);
+            grid-template-columns: 60px repeat(6, 1fr);
             gap: 2px;
             font-size: 10px;
             font-family: 'JetBrains Mono', monospace;
@@ -637,6 +637,10 @@
             background: #6c5ce7;
         }
 
+        .legend-color.paradex {
+            background: #ff6b6b;
+        }
+
         .legend-label {
             color: #ccc;
             font-size: 10px;
@@ -797,6 +801,11 @@
                                 <span class="legend-color gate"></span>
                                 <span class="legend-label">Gate.io:</span>
                                 <span class="legend-value" id="gateValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color paradex"></span>
+                                <span class="legend-label">Paradex:</span>
+                                <span class="legend-value" id="paradexValue">--</span>
                             </div>
                         </div>
                     </div>

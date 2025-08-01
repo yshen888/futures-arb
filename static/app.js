@@ -12,7 +12,7 @@ class FuturesArbitrageScanner {
         this.minProfitFilter = 0.05;
         
         this.chart = null;
-        this.chartData = [[], [], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, okx, gate
+        this.chartData = [[], [], [], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, okx, gate, paradex
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
@@ -88,6 +88,7 @@ class FuturesArbitrageScanner {
         const now = Date.now() / 1000;
         this.chartData = [
             [now - 60, now],
+            [null, null],
             [null, null],
             [null, null],
             [null, null],
@@ -196,6 +197,13 @@ class FuturesArbitrageScanner {
                 {
                     label: "Gate.io Futures",
                     stroke: "#6c5ce7",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
+                },
+                {
+                    label: "Paradex Futures",
+                    stroke: "#ff6b6b",
                     width: 2,
                     spanGaps: false,
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
@@ -400,6 +408,7 @@ class FuturesArbitrageScanner {
             'kraken_futures': '#5a5aff',
             'okx_futures': '#1890ff',
             'gate_futures': '#6c5ce7',
+            'paradex_futures': '#ff6b6b',
         };
 
         let html = '';
@@ -451,8 +460,9 @@ class FuturesArbitrageScanner {
         const hyperliquidHistory = this.priceHistory.get('hyperliquid_futures') || [];
         const okxHistory = this.priceHistory.get('okx_futures') || [];
         const gateHistory = this.priceHistory.get('gate_futures') || [];
+        const paradexHistory = this.priceHistory.get('paradex_futures') || [];
         
-        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && okxHistory.length === 0 && gateHistory.length === 0) return;
+        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && okxHistory.length === 0 && gateHistory.length === 0 && paradexHistory.length === 0) return;
 
         // Create combined timestamp array
         const allTimestamps = new Set();
@@ -461,6 +471,7 @@ class FuturesArbitrageScanner {
         hyperliquidHistory.forEach(point => allTimestamps.add(point[0]));
         okxHistory.forEach(point => allTimestamps.add(point[0]));
         gateHistory.forEach(point => allTimestamps.add(point[0]));
+        paradexHistory.forEach(point => allTimestamps.add(point[0]));
         
         const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
         
@@ -470,18 +481,21 @@ class FuturesArbitrageScanner {
         const hyperliquidPrices = [];
         const okxPrices = [];
         const gatePrices = [];
+        const paradexPrices = [];
         
         const binanceMap = new Map(binanceHistory);
         const bybitMap = new Map(bybitHistory);
         const hyperliquidMap = new Map(hyperliquidHistory);
         const okxMap = new Map(okxHistory);
         const gateMap = new Map(gateHistory);
+        const paradexMap = new Map(paradexHistory);
         
         let lastBinancePrice = null;
         let lastBybitPrice = null;
         let lastHyperliquidPrice = null;
         let lastOkxPrice = null;
         let lastGatePrice = null;
+        let lastParadexPrice = null;
         
         timestamps.forEach(timestamp => {
             const binancePrice = binanceMap.get(timestamp);
@@ -489,6 +503,7 @@ class FuturesArbitrageScanner {
             const hyperliquidPrice = hyperliquidMap.get(timestamp);
             const okxPrice = okxMap.get(timestamp);
             const gatePrice = gateMap.get(timestamp);
+            const paradexPrice = paradexMap.get(timestamp);
             
             if (binancePrice !== undefined) {
                 lastBinancePrice = binancePrice;
@@ -505,15 +520,19 @@ class FuturesArbitrageScanner {
             if (gatePrice !== undefined) {
                 lastGatePrice = gatePrice;
             }
+            if (paradexPrice !== undefined) {
+                lastParadexPrice = paradexPrice;
+            }
 
             binancePrices.push(lastBinancePrice);
             bybitPrices.push(lastBybitPrice);
             hyperliquidPrices.push(lastHyperliquidPrice);
             okxPrices.push(lastOkxPrice);
             gatePrices.push(lastGatePrice);
+            paradexPrices.push(lastParadexPrice);
         });
 
-        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, okxPrices, gatePrices];
+        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, okxPrices, gatePrices, paradexPrices];
         this.chart.setData(this.chartData);
         this.lastChartUpdate = performance.now();
     }
@@ -699,7 +718,8 @@ class FuturesArbitrageScanner {
             'bybit_futures': 'BYB',
             'hyperliquid_futures': 'HYP',
             'okx_futures': 'OKX',
-            'gate_futures': 'GAT'
+            'gate_futures': 'GAT',
+            'paradex_futures': 'PDX'
         };
         return names[exchange] || exchange.substring(0, 3).toUpperCase();
     }
@@ -736,7 +756,7 @@ class FuturesArbitrageScanner {
         this.priceHistory.clear();
         this.arbitrageOpportunities = [];
         
-        this.chartData = [[], [], [], [], [], []];
+        this.chartData = [[], [], [], [], [], [], []];
         if (this.chart) {
             this.chart.setData(this.chartData);
         }
@@ -792,6 +812,7 @@ class FuturesArbitrageScanner {
         const hyperliquidPrice = u.data[3][idx];
         const okxPrice = u.data[4][idx];
         const gatePrice = u.data[5][idx];
+        const paradexPrice = u.data[6][idx];
 
         // Format timestamp with milliseconds
         if (timestamp) {
@@ -812,6 +833,11 @@ class FuturesArbitrageScanner {
         const gateValue = document.getElementById('gateValue');
         if (gateValue) {
             gateValue.textContent = gatePrice ? `$${this.formatPrice(gatePrice)}` : '--';
+        }
+        
+        const paradexValue = document.getElementById('paradexValue');
+        if (paradexValue) {
+            paradexValue.textContent = paradexPrice ? `$${this.formatPrice(paradexPrice)}` : '--';
         }
     }
 
