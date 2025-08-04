@@ -12,7 +12,7 @@ class FuturesArbitrageScanner {
         this.minProfitFilter = 0.05;
         
         this.chart = null;
-        this.chartData = [[], [], [], [], [], [], []]; // timestamps, binance, bybit, hyperliquid, okx, gate, paradex
+        this.chartData = [[], [], [], [], [], [], [], [], []]; // timestamps, binance_futures, bybit_futures, hyperliquid, okx, gate, paradex, binance_spot, bybit_spot
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
@@ -88,13 +88,14 @@ class FuturesArbitrageScanner {
         const now = Date.now() / 1000;
         this.chartData = [
             [now - 60, now],
-            [null, null],
-            [null, null],
-            [null, null],
-            [null, null],
-            [null, null],
-            [null, null],
-            [null, null]
+            [null, null], // binance_futures
+            [null, null], // bybit_futures
+            [null, null], // hyperliquid_futures
+            [null, null], // okx_futures
+            [null, null], // gate_futures
+            [null, null], // paradex_futures
+            [null, null], // binance_spot
+            [null, null]  // bybit_spot
         ];
         
         const opts = {
@@ -204,6 +205,20 @@ class FuturesArbitrageScanner {
                 {
                     label: "Paradex Futures",
                     stroke: "#ff6b6b",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
+                },
+                {
+                    label: "Binance Spot",
+                    stroke: "#ffb347",
+                    width: 2,
+                    spanGaps: false,
+                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
+                },
+                {
+                    label: "Bybit Spot",
+                    stroke: "#dda0dd",
                     width: 2,
                     spanGaps: false,
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
@@ -409,6 +424,8 @@ class FuturesArbitrageScanner {
             'okx_futures': '#1890ff',
             'gate_futures': '#6c5ce7',
             'paradex_futures': '#ff6b6b',
+            'binance_spot': '#ffb347',
+            'bybit_spot': '#dda0dd',
         };
 
         let html = '';
@@ -461,8 +478,10 @@ class FuturesArbitrageScanner {
         const okxHistory = this.priceHistory.get('okx_futures') || [];
         const gateHistory = this.priceHistory.get('gate_futures') || [];
         const paradexHistory = this.priceHistory.get('paradex_futures') || [];
+        const binanceSpotHistory = this.priceHistory.get('binance_spot') || [];
+        const bybitSpotHistory = this.priceHistory.get('bybit_spot') || [];
         
-        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && okxHistory.length === 0 && gateHistory.length === 0 && paradexHistory.length === 0) return;
+        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && okxHistory.length === 0 && gateHistory.length === 0 && paradexHistory.length === 0 && binanceSpotHistory.length === 0 && bybitSpotHistory.length === 0) return;
 
         // Create combined timestamp array
         const allTimestamps = new Set();
@@ -472,6 +491,8 @@ class FuturesArbitrageScanner {
         okxHistory.forEach(point => allTimestamps.add(point[0]));
         gateHistory.forEach(point => allTimestamps.add(point[0]));
         paradexHistory.forEach(point => allTimestamps.add(point[0]));
+        binanceSpotHistory.forEach(point => allTimestamps.add(point[0]));
+        bybitSpotHistory.forEach(point => allTimestamps.add(point[0]));
         
         const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
         
@@ -482,6 +503,8 @@ class FuturesArbitrageScanner {
         const okxPrices = [];
         const gatePrices = [];
         const paradexPrices = [];
+        const binanceSpotPrices = [];
+        const bybitSpotPrices = [];
         
         const binanceMap = new Map(binanceHistory);
         const bybitMap = new Map(bybitHistory);
@@ -489,6 +512,8 @@ class FuturesArbitrageScanner {
         const okxMap = new Map(okxHistory);
         const gateMap = new Map(gateHistory);
         const paradexMap = new Map(paradexHistory);
+        const binanceSpotMap = new Map(binanceSpotHistory);
+        const bybitSpotMap = new Map(bybitSpotHistory);
         
         let lastBinancePrice = null;
         let lastBybitPrice = null;
@@ -496,6 +521,8 @@ class FuturesArbitrageScanner {
         let lastOkxPrice = null;
         let lastGatePrice = null;
         let lastParadexPrice = null;
+        let lastBinanceSpotPrice = null;
+        let lastBybitSpotPrice = null;
         
         timestamps.forEach(timestamp => {
             const binancePrice = binanceMap.get(timestamp);
@@ -504,6 +531,8 @@ class FuturesArbitrageScanner {
             const okxPrice = okxMap.get(timestamp);
             const gatePrice = gateMap.get(timestamp);
             const paradexPrice = paradexMap.get(timestamp);
+            const binanceSpotPrice = binanceSpotMap.get(timestamp);
+            const bybitSpotPrice = bybitSpotMap.get(timestamp);
             
             if (binancePrice !== undefined) {
                 lastBinancePrice = binancePrice;
@@ -523,6 +552,12 @@ class FuturesArbitrageScanner {
             if (paradexPrice !== undefined) {
                 lastParadexPrice = paradexPrice;
             }
+            if (binanceSpotPrice !== undefined) {
+                lastBinanceSpotPrice = binanceSpotPrice;
+            }
+            if (bybitSpotPrice !== undefined) {
+                lastBybitSpotPrice = bybitSpotPrice;
+            }
 
             binancePrices.push(lastBinancePrice);
             bybitPrices.push(lastBybitPrice);
@@ -530,9 +565,11 @@ class FuturesArbitrageScanner {
             okxPrices.push(lastOkxPrice);
             gatePrices.push(lastGatePrice);
             paradexPrices.push(lastParadexPrice);
+            binanceSpotPrices.push(lastBinanceSpotPrice);
+            bybitSpotPrices.push(lastBybitSpotPrice);
         });
 
-        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, okxPrices, gatePrices, paradexPrices];
+        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, okxPrices, gatePrices, paradexPrices, binanceSpotPrices, bybitSpotPrices];
         this.chart.setData(this.chartData);
         this.lastChartUpdate = performance.now();
     }
@@ -714,12 +751,14 @@ class FuturesArbitrageScanner {
 
     getShortExchangeName(exchange) {
         const names = {
-            'binance_futures': 'BIN',
-            'bybit_futures': 'BYB',
+            'binance_futures': 'BIN-F',
+            'bybit_futures': 'BYB-F',
             'hyperliquid_futures': 'HYP',
-            'okx_futures': 'OKX',
-            'gate_futures': 'GAT',
-            'paradex_futures': 'PDX'
+            'okx_futures': 'OKX-F',
+            'gate_futures': 'GAT-F',
+            'paradex_futures': 'PDX',
+            'binance_spot': 'BIN-S',
+            'bybit_spot': 'BYB-S'
         };
         return names[exchange] || exchange.substring(0, 3).toUpperCase();
     }
@@ -756,7 +795,7 @@ class FuturesArbitrageScanner {
         this.priceHistory.clear();
         this.arbitrageOpportunities = [];
         
-        this.chartData = [[], [], [], [], [], [], []];
+        this.chartData = [[], [], [], [], [], [], [], [], []];
         if (this.chart) {
             this.chart.setData(this.chartData);
         }
@@ -813,6 +852,8 @@ class FuturesArbitrageScanner {
         const okxPrice = u.data[4][idx];
         const gatePrice = u.data[5][idx];
         const paradexPrice = u.data[6][idx];
+        const binanceSpotPrice = u.data[7][idx];
+        const bybitSpotPrice = u.data[8][idx];
 
         // Format timestamp with milliseconds
         if (timestamp) {
@@ -838,6 +879,16 @@ class FuturesArbitrageScanner {
         const paradexValue = document.getElementById('paradexValue');
         if (paradexValue) {
             paradexValue.textContent = paradexPrice ? `$${this.formatPrice(paradexPrice)}` : '--';
+        }
+        
+        const binanceSpotValue = document.getElementById('binanceSpotValue');
+        if (binanceSpotValue) {
+            binanceSpotValue.textContent = binanceSpotPrice ? `$${this.formatPrice(binanceSpotPrice)}` : '--';
+        }
+        
+        const bybitSpotValue = document.getElementById('bybitSpotValue');
+        if (bybitSpotValue) {
+            bybitSpotValue.textContent = bybitSpotPrice ? `$${this.formatPrice(bybitSpotPrice)}` : '--';
         }
     }
 

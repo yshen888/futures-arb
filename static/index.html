@@ -447,9 +447,9 @@
 
         .spreads-matrix {
             display: grid;
-            grid-template-columns: 60px repeat(6, 1fr);
+            grid-template-columns: 60px repeat(8, 1fr);
             gap: 2px;
-            font-size: 10px;
+            font-size: 9px;
             font-family: 'JetBrains Mono', monospace;
             width: 100%;
             overflow: hidden;
@@ -641,6 +641,14 @@
             background: #ff6b6b;
         }
 
+        .legend-color.binance-spot {
+            background: #ffb347;
+        }
+
+        .legend-color.bybit-spot {
+            background: #dda0dd;
+        }
+
         .legend-label {
             color: #ccc;
             font-size: 10px;
@@ -806,6 +814,16 @@
                                 <span class="legend-color paradex"></span>
                                 <span class="legend-label">Paradex:</span>
                                 <span class="legend-value" id="paradexValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color binance-spot"></span>
+                                <span class="legend-label">Binance Spot:</span>
+                                <span class="legend-value" id="binanceSpotValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color bybit-spot"></span>
+                                <span class="legend-label">Bybit Spot:</span>
+                                <span class="legend-value" id="bybitSpotValue">--</span>
                             </div>
                         </div>
                     </div>

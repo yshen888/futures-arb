@@ -280,6 +280,10 @@ func main() {
 	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectGateFutures(symbols, scanner.priceChan, scanner.tradeChan)
 	go exchanges.ConnectParadexFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	
+	// Start spot exchange connections
+	go exchanges.ConnectBinanceSpot(symbols, scanner.priceChan, scanner.tradeChan)
+	go exchanges.ConnectBybitSpot(symbols, scanner.priceChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 
