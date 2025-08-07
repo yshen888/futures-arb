@@ -105,13 +105,6 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, tradeChan c
 					// Convert OKX symbol back to standard format
 					standardSymbol := convertFromOKXSymbol(trade.InstID)
 
-					priceData := PriceData{
-						Symbol:    standardSymbol,
-						Exchange:  "okx_futures",
-						Price:     price,
-						Timestamp: timestamp,
-					}
-
 					tradeData := TradeData{
 						Symbol:    standardSymbol,
 						Exchange:  "okx_futures",
@@ -121,8 +114,44 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, tradeChan c
 						Timestamp: timestamp,
 					}
 
-					priceChan <- priceData
 					tradeChan <- tradeData
+				}
+				continue
+			}
+
+			// Check if it's an orderbook message
+			var orderbookMsg OKXFuturesOrderbook
+			if err := json.Unmarshal(message, &orderbookMsg); err == nil && orderbookMsg.Arg.Channel == "books5" && len(orderbookMsg.Data) > 0 {
+				for _, book := range orderbookMsg.Data {
+					if len(book.Bids) == 0 || len(book.Asks) == 0 {
+						continue
+					}
+
+					// Parse best bid and ask
+					bestBid, err1 := strconv.ParseFloat(book.Bids[0][0], 64)
+					bestAsk, err2 := strconv.ParseFloat(book.Asks[0][0], 64)
+					if err1 != nil || err2 != nil {
+						continue
+					}
+
+					// Convert timestamp from string to int64
+					timestamp, err := strconv.ParseInt(book.Timestamp, 10, 64)
+					if err != nil {
+						timestamp = time.Now().UnixMilli()
+					}
+
+					// Convert OKX symbol back to standard format
+					standardSymbol := convertFromOKXSymbol(book.InstID)
+
+					orderbookData := OrderbookData{
+						Symbol:    standardSymbol,
+						Exchange:  "okx_futures",
+						BestBid:   bestBid,
+						BestAsk:   bestAsk,
+						Timestamp: timestamp,
+					}
+
+					orderbookChan <- orderbookData
 				}
 			}
 		}

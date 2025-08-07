@@ -41,6 +41,22 @@ type GateTradeMessage struct {
 	Result  []GateFuturesTrade  `json:"result"`
 }
 
+type GateFuturesOrderbook struct {
+	Contract       string     `json:"contract"`
+	Ask            [][]string `json:"asks"`
+	Bid            [][]string `json:"bids"`
+	UpdateTime     int64      `json:"update_time"`
+	UpdateTimeMs   int64      `json:"update_time_ms"`
+	UpdateID       int64      `json:"update_id"`
+}
+
+type GateOrderbookMessage struct {
+	Time    int64                   `json:"time"`
+	Channel string                  `json:"channel"`
+	Event   string                  `json:"event"`
+	Result  []GateFuturesOrderbook `json:"result"`
+}
+
 type GateSubscribeMessage struct {
 	Time    int64    `json:"time"`
 	Channel string   `json:"channel"`
@@ -48,7 +64,7 @@ type GateSubscribeMessage struct {
 	Payload []string `json:"payload"`
 }
 
-func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://fx-ws.gateio.ws/v4/ws/usdt"
 
 	for {
@@ -68,16 +84,32 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan 
 		}
 		
 		// Subscribe to trades for all symbols in one message
-		subscribeMsg := GateSubscribeMessage{
+		tradeSubscribeMsg := GateSubscribeMessage{
 			Time:    time.Now().Unix(),
 			Channel: "futures.trades",
 			Event:   "subscribe",
 			Payload: gateSymbols,
 		}
 
-		err = conn.WriteJSON(subscribeMsg)
+		err = conn.WriteJSON(tradeSubscribeMsg)
 		if err != nil {
-			log.Printf("Gate.io subscription error: %v", err)
+			log.Printf("Gate.io trade subscription error: %v", err)
+			conn.Close()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// Subscribe to orderbook for all symbols in one message
+		orderbookSubscribeMsg := GateSubscribeMessage{
+			Time:    time.Now().Unix(),
+			Channel: "futures.order_book",
+			Event:   "subscribe",
+			Payload: gateSymbols,
+		}
+
+		err = conn.WriteJSON(orderbookSubscribeMsg)
+		if err != nil {
+			log.Printf("Gate.io orderbook subscription error: %v", err)
 			conn.Close()
 			time.Sleep(5 * time.Second)
 			continue
@@ -148,13 +180,6 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan 
 						quantity = fmt.Sprintf("%d", -trade.Size) // Make quantity positive
 					}
 
-					priceData := PriceData{
-						Symbol:    standardSymbol,
-						Exchange:  "gate_futures",
-						Price:     price,
-						Timestamp: timestamp,
-					}
-
 					tradeData := TradeData{
 						Symbol:    standardSymbol,
 						Exchange:  "gate_futures",
@@ -164,8 +189,52 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan 
 						Timestamp: timestamp,
 					}
 
-					priceChan <- priceData
 					tradeChan <- tradeData
+				}
+				continue
+			}
+
+			// Try to parse as orderbook message
+			var orderbookMsg GateOrderbookMessage
+			if err := json.Unmarshal(message, &orderbookMsg); err == nil &&
+			   orderbookMsg.Channel == "futures.order_book" &&
+			   orderbookMsg.Event == "update" &&
+			   len(orderbookMsg.Result) > 0 {
+				
+				for _, book := range orderbookMsg.Result {
+					if len(book.Bid) == 0 || len(book.Ask) == 0 {
+						continue
+					}
+
+					// Parse best bid and ask
+					bestBid, err1 := strconv.ParseFloat(book.Bid[0][0], 64)
+					bestAsk, err2 := strconv.ParseFloat(book.Ask[0][0], 64)
+					if err1 != nil || err2 != nil {
+						continue
+					}
+
+					// Convert Gate.io symbol back to standard format
+					standardSymbol := convertFromGateSymbol(book.Contract)
+
+					// Use update_time_ms if available, otherwise update_time * 1000
+					var timestamp int64
+					if book.UpdateTimeMs > 0 {
+						timestamp = book.UpdateTimeMs
+					} else if book.UpdateTime > 0 {
+						timestamp = book.UpdateTime * 1000
+					} else {
+						timestamp = time.Now().UnixMilli()
+					}
+
+					orderbookData := OrderbookData{
+						Symbol:    standardSymbol,
+						Exchange:  "gate_futures",
+						BestBid:   bestBid,
+						BestAsk:   bestAsk,
+						Timestamp: timestamp,
+					}
+
+					orderbookChan <- orderbookData
 				}
 			}
 		}

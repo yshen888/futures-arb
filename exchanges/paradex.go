@@ -46,7 +46,21 @@ type ParadexTradeEvent struct {
 	} `json:"params"`
 }
 
-func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+type ParadexBookEvent struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  struct {
+		Channel string `json:"channel"`
+		Data    struct {
+			Market    string     `json:"market"`
+			Bids      [][]string `json:"bids"`
+			Asks      [][]string `json:"asks"`
+			Timestamp int64      `json:"timestamp"`
+		} `json:"data"`
+	} `json:"params"`
+}
+
+func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://ws.api.prod.paradex.trade/v1"
 
 	for {
@@ -59,7 +73,7 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 
 		log.Printf("Connected to Paradex futures WebSocket")
 
-		// Subscribe to trades for each symbol
+		// Subscribe to trades and book for each symbol
 		for _, symbol := range symbols {
 			// Convert symbol format (BTCUSDT -> BTC-USD-PERP)
 			paradexSymbol := convertToParadexSymbol(symbol)
@@ -67,7 +81,8 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 				continue
 			}
 
-			subscribeReq := ParadexWSRequest{
+			// Subscribe to trades
+			tradeSubscribeReq := ParadexWSRequest{
 				ID:      time.Now().UnixMicro(),
 				JSONRPC: "2.0",
 				Method:  "subscribe",
@@ -78,8 +93,25 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 				},
 			}
 
-			if err := conn.WriteJSON(subscribeReq); err != nil {
-				log.Printf("Paradex subscription error for %s: %v", paradexSymbol, err)
+			if err := conn.WriteJSON(tradeSubscribeReq); err != nil {
+				log.Printf("Paradex trade subscription error for %s: %v", paradexSymbol, err)
+				continue
+			}
+
+			// Subscribe to orderbook
+			bookSubscribeReq := ParadexWSRequest{
+				ID:      time.Now().UnixMicro() + 1,
+				JSONRPC: "2.0",
+				Method:  "subscribe",
+				Params: struct {
+					Channel string `json:"channel"`
+				}{
+					Channel: fmt.Sprintf("book.%s", paradexSymbol),
+				},
+			}
+
+			if err := conn.WriteJSON(bookSubscribeReq); err != nil {
+				log.Printf("Paradex book subscription error for %s: %v", paradexSymbol, err)
 				continue
 			}
 		}
@@ -100,11 +132,8 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 
 			// Try to parse as trade event
 			var tradeEvent ParadexTradeEvent
-			if err := json.Unmarshal(message, &tradeEvent); err != nil {
-				continue
-			}
-
-			if tradeEvent.Method == "subscription" && strings.HasPrefix(tradeEvent.Params.Channel, "trades.") {
+			if err := json.Unmarshal(message, &tradeEvent); err == nil &&
+			   tradeEvent.Method == "subscription" && strings.HasPrefix(tradeEvent.Params.Channel, "trades.") {
 				// Extract symbol from channel (trades.BTC-USD-PERP -> BTCUSDT)
 				channelParts := strings.Split(tradeEvent.Params.Channel, ".")
 				if len(channelParts) != 2 {
@@ -130,14 +159,6 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 				// Normalize side to lowercase
 				side := strings.ToLower(trade.Side)
 
-				// Send price data
-				priceChan <- PriceData{
-					Symbol:    symbol,
-					Exchange:  "paradex_futures",
-					Price:     price,
-					Timestamp: timestamp.UnixMilli(),
-				}
-
 				// Send trade data
 				tradeChan <- TradeData{
 					Symbol:    symbol,
@@ -146,6 +167,46 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 					Quantity:  trade.Size,
 					Side:      side,
 					Timestamp: timestamp.UnixMilli(),
+				}
+				continue
+			}
+
+			// Try to parse as book event
+			var bookEvent ParadexBookEvent
+			if err := json.Unmarshal(message, &bookEvent); err == nil &&
+			   bookEvent.Method == "subscription" && strings.HasPrefix(bookEvent.Params.Channel, "book.") {
+				// Extract symbol from channel (book.BTC-USD-PERP -> BTCUSDT)
+				channelParts := strings.Split(bookEvent.Params.Channel, ".")
+				if len(channelParts) != 2 {
+					continue
+				}
+
+				paradexSymbol := channelParts[1]
+				symbol := convertFromParadexSymbol(paradexSymbol)
+				if symbol == "" {
+					continue
+				}
+
+				book := bookEvent.Params.Data
+
+				if len(book.Bids) == 0 || len(book.Asks) == 0 {
+					continue
+				}
+
+				// Parse best bid and ask
+				bestBid, err1 := strconv.ParseFloat(book.Bids[0][0], 64)
+				bestAsk, err2 := strconv.ParseFloat(book.Asks[0][0], 64)
+				if err1 != nil || err2 != nil {
+					continue
+				}
+
+				// Send orderbook data
+				orderbookChan <- OrderbookData{
+					Symbol:    symbol,
+					Exchange:  "paradex_futures",
+					BestBid:   bestBid,
+					BestAsk:   bestAsk,
+					Timestamp: book.Timestamp,
 				}
 			}
 		}

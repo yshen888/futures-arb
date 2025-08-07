@@ -1,6 +1,7 @@
 package exchanges
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -22,7 +23,19 @@ type BybitFuturesTrade struct {
 	} `json:"data"`
 }
 
-func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+type BybitFuturesOrderbook struct {
+	Topic string `json:"topic"`
+	Type  string `json:"type"`
+	Data  struct {
+		Symbol string     `json:"s"`
+		Bids   [][]string `json:"b"`
+		Asks   [][]string `json:"a"`
+		UpdateID int64    `json:"u"`
+		SeqNum   int64    `json:"seq"`
+	} `json:"data"`
+}
+
+func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://stream.bybit.com/v5/public/linear"
 
 	for {
@@ -37,11 +50,12 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan
 
 		subscribeMsg := map[string]interface{}{
 			"op":   "subscribe",
-			"args": make([]string, len(symbols)),
+			"args": make([]string, len(symbols)*2),
 		}
 
 		for i, symbol := range symbols {
-			subscribeMsg["args"].([]string)[i] = fmt.Sprintf("publicTrade.%s", symbol)
+			subscribeMsg["args"].([]string)[i*2] = fmt.Sprintf("orderbook.1.%s", symbol)
+			subscribeMsg["args"].([]string)[i*2+1] = fmt.Sprintf("publicTrade.%s", symbol)
 		}
 
 		err = conn.WriteJSON(subscribeMsg)
@@ -53,7 +67,7 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan
 		}
 
 		for {
-			var message BybitFuturesTrade
+			var message json.RawMessage
 			err := conn.ReadJSON(&message)
 			if err != nil {
 				log.Printf("Bybit futures read error: %v", err)
@@ -61,8 +75,35 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan
 				break
 			}
 
-			if message.Type == "snapshot" || message.Type == "delta" {
-				for _, trade := range message.Data {
+			// Try to parse as orderbook first
+			var orderbookMsg BybitFuturesOrderbook
+			if err := json.Unmarshal(message, &orderbookMsg); err == nil && 
+			   len(orderbookMsg.Data.Asks) > 0 && len(orderbookMsg.Data.Bids) > 0 {
+				
+				bidPrice, err1 := strconv.ParseFloat(orderbookMsg.Data.Bids[0][0], 64)
+				askPrice, err2 := strconv.ParseFloat(orderbookMsg.Data.Asks[0][0], 64)
+				if err1 != nil || err2 != nil {
+					continue
+				}
+
+				orderbookData := OrderbookData{
+					Symbol:    orderbookMsg.Data.Symbol,
+					Exchange:  "bybit_futures",
+					BestBid:   bidPrice,
+					BestAsk:   askPrice,
+					Timestamp: time.Now().UnixMilli(),
+				}
+
+				orderbookChan <- orderbookData
+				continue
+			}
+
+			// Try to parse as trade message
+			var tradeMsg BybitFuturesTrade
+			if err := json.Unmarshal(message, &tradeMsg); err == nil && 
+			   (tradeMsg.Type == "snapshot" || tradeMsg.Type == "delta") {
+				
+				for _, trade := range tradeMsg.Data {
 					price, err := strconv.ParseFloat(trade.Price, 64)
 					if err != nil {
 						continue
@@ -76,13 +117,6 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan
 						side = "sell"
 					}
 
-					priceData := PriceData{
-						Symbol:    trade.Symbol,
-						Exchange:  "bybit_futures",
-						Price:     price,
-						Timestamp: trade.Timestamp,
-					}
-
 					tradeData := TradeData{
 						Symbol:    trade.Symbol,
 						Exchange:  "bybit_futures",
@@ -92,7 +126,6 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, tradeChan
 						Timestamp: trade.Timestamp,
 					}
 
-					priceChan <- priceData
 					tradeChan <- tradeData
 				}
 			}
@@ -116,8 +149,20 @@ type BybitSpotTrade struct {
 	} `json:"data"`
 }
 
+type BybitSpotOrderbook struct {
+	Topic string `json:"topic"`
+	Type  string `json:"type"`
+	Data  struct {
+		Symbol string     `json:"s"`
+		Bids   [][]string `json:"b"`
+		Asks   [][]string `json:"a"`
+		UpdateID int64    `json:"u"`
+		SeqNum   int64    `json:"seq"`
+	} `json:"data"`
+}
+
 // ConnectBybitSpot connects to Bybit spot trading WebSocket API
-func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://stream.bybit.com/v5/public/spot"
 
 	for {
@@ -132,11 +177,12 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan ch
 
 		subscribeMsg := map[string]interface{}{
 			"op":   "subscribe",
-			"args": make([]string, len(symbols)),
+			"args": make([]string, len(symbols)*2),
 		}
 
 		for i, symbol := range symbols {
-			subscribeMsg["args"].([]string)[i] = fmt.Sprintf("publicTrade.%s", symbol)
+			subscribeMsg["args"].([]string)[i*2] = fmt.Sprintf("orderbook.1.%s", symbol)
+			subscribeMsg["args"].([]string)[i*2+1] = fmt.Sprintf("publicTrade.%s", symbol)
 		}
 
 		err = conn.WriteJSON(subscribeMsg)
@@ -148,7 +194,7 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan ch
 		}
 
 		for {
-			var message BybitSpotTrade
+			var message json.RawMessage
 			err := conn.ReadJSON(&message)
 			if err != nil {
 				log.Printf("Bybit spot read error: %v", err)
@@ -156,8 +202,35 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan ch
 				break
 			}
 
-			if message.Type == "snapshot" || message.Type == "delta" {
-				for _, trade := range message.Data {
+			// Try to parse as orderbook first
+			var orderbookMsg BybitSpotOrderbook
+			if err := json.Unmarshal(message, &orderbookMsg); err == nil && 
+			   len(orderbookMsg.Data.Asks) > 0 && len(orderbookMsg.Data.Bids) > 0 {
+				
+				bidPrice, err1 := strconv.ParseFloat(orderbookMsg.Data.Bids[0][0], 64)
+				askPrice, err2 := strconv.ParseFloat(orderbookMsg.Data.Asks[0][0], 64)
+				if err1 != nil || err2 != nil {
+					continue
+				}
+
+				orderbookData := OrderbookData{
+					Symbol:    orderbookMsg.Data.Symbol,
+					Exchange:  "bybit_spot",
+					BestBid:   bidPrice,
+					BestAsk:   askPrice,
+					Timestamp: time.Now().UnixMilli(),
+				}
+
+				orderbookChan <- orderbookData
+				continue
+			}
+
+			// Try to parse as trade message
+			var tradeMsg BybitSpotTrade
+			if err := json.Unmarshal(message, &tradeMsg); err == nil && 
+			   (tradeMsg.Type == "snapshot" || tradeMsg.Type == "delta") {
+				
+				for _, trade := range tradeMsg.Data {
 					price, err := strconv.ParseFloat(trade.Price, 64)
 					if err != nil {
 						continue
@@ -171,13 +244,6 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan ch
 						side = "sell"
 					}
 
-					priceData := PriceData{
-						Symbol:    trade.Symbol,
-						Exchange:  "bybit_spot",
-						Price:     price,
-						Timestamp: trade.Timestamp,
-					}
-
 					tradeData := TradeData{
 						Symbol:    trade.Symbol,
 						Exchange:  "bybit_spot",
@@ -187,7 +253,6 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, tradeChan ch
 						Timestamp: trade.Timestamp,
 					}
 
-					priceChan <- priceData
 					tradeChan <- tradeData
 				}
 			}

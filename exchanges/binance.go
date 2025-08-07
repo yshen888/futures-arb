@@ -1,6 +1,7 @@
 package exchanges
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -21,10 +22,21 @@ type BinanceFuturesTrade struct {
 	IsMaker   bool   `json:"m"`
 }
 
-func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
-	streamNames := make([]string, len(symbols))
+type BinanceFuturesBookTicker struct {
+	EventType   string `json:"e"`
+	EventTime   int64  `json:"E"`
+	Symbol      string `json:"s"`
+	BestBidPrice string `json:"b"`
+	BestBidQty   string `json:"B"`
+	BestAskPrice string `json:"a"`
+	BestAskQty   string `json:"A"`
+}
+
+func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
+	streamNames := make([]string, len(symbols)*2)
 	for i, symbol := range symbols {
-		streamNames[i] = strings.ToLower(symbol) + "@aggTrade"
+		streamNames[i*2] = strings.ToLower(symbol) + "@bookTicker"
+		streamNames[i*2+1] = strings.ToLower(symbol) + "@aggTrade"
 	}
 	streamParam := strings.Join(streamNames, "/")
 
@@ -42,8 +54,8 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 
 		for {
 			var message struct {
-				Stream string              `json:"stream"`
-				Data   BinanceFuturesTrade `json:"data"`
+				Stream string          `json:"stream"`
+				Data   json.RawMessage `json:"data"`
 			}
 
 			err := conn.ReadJSON(&message)
@@ -53,37 +65,58 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 				break
 			}
 
-			price, err := strconv.ParseFloat(message.Data.Price, 64)
-			if err != nil {
-				continue
-			}
+			if strings.Contains(message.Stream, "@bookTicker") {
+				var bookTicker BinanceFuturesBookTicker
+				if err := json.Unmarshal(message.Data, &bookTicker); err != nil {
+					continue
+				}
 
-			// Normalize trade side (isMaker: false = buy aggressor, true = sell aggressor)
-			var side string
-			if !message.Data.IsMaker {
-				side = "buy"
-			} else {
-				side = "sell"
-			}
+				bidPrice, err1 := strconv.ParseFloat(bookTicker.BestBidPrice, 64)
+				askPrice, err2 := strconv.ParseFloat(bookTicker.BestAskPrice, 64)
+				if err1 != nil || err2 != nil {
+					continue
+				}
 
-			priceData := PriceData{
-				Symbol:    message.Data.Symbol,
-				Exchange:  "binance_futures",
-				Price:     price,
-				Timestamp: message.Data.TradeTime,
-			}
+				orderbookData := OrderbookData{
+					Symbol:    bookTicker.Symbol,
+					Exchange:  "binance_futures",
+					BestBid:   bidPrice,
+					BestAsk:   askPrice,
+					Timestamp: bookTicker.EventTime,
+				}
 
-			tradeData := TradeData{
-				Symbol:    message.Data.Symbol,
-				Exchange:  "binance_futures",
-				Price:     price,
-				Quantity:  message.Data.Quantity,
-				Side:      side,
-				Timestamp: message.Data.TradeTime,
-			}
+				orderbookChan <- orderbookData
 
-			priceChan <- priceData
-			tradeChan <- tradeData
+			} else if strings.Contains(message.Stream, "@aggTrade") {
+				var trade BinanceFuturesTrade
+				if err := json.Unmarshal(message.Data, &trade); err != nil {
+					continue
+				}
+
+				price, err := strconv.ParseFloat(trade.Price, 64)
+				if err != nil {
+					continue
+				}
+
+				// Normalize trade side (isMaker: false = buy aggressor, true = sell aggressor)
+				var side string
+				if !trade.IsMaker {
+					side = "buy"
+				} else {
+					side = "sell"
+				}
+
+				tradeData := TradeData{
+					Symbol:    trade.Symbol,
+					Exchange:  "binance_futures",
+					Price:     price,
+					Quantity:  trade.Quantity,
+					Side:      side,
+					Timestamp: trade.TradeTime,
+				}
+
+				tradeChan <- tradeData
+			}
 		}
 
 		time.Sleep(2 * time.Second)
@@ -102,11 +135,22 @@ type BinanceSpotTrade struct {
 	IsMaker   bool   `json:"m"`
 }
 
+type BinanceSpotBookTicker struct {
+	EventType    string `json:"e"`
+	EventTime    int64  `json:"E"`
+	Symbol       string `json:"s"`
+	BestBidPrice string `json:"b"`
+	BestBidQty   string `json:"B"`
+	BestAskPrice string `json:"a"`
+	BestAskQty   string `json:"A"`
+}
+
 // ConnectBinanceSpot connects to Binance spot trading WebSocket API
-func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
-	streamNames := make([]string, len(symbols))
+func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
+	streamNames := make([]string, len(symbols)*2)
 	for i, symbol := range symbols {
-		streamNames[i] = strings.ToLower(symbol) + "@aggTrade"
+		streamNames[i*2] = strings.ToLower(symbol) + "@bookTicker"
+		streamNames[i*2+1] = strings.ToLower(symbol) + "@aggTrade"
 	}
 	streamParam := strings.Join(streamNames, "/")
 
@@ -124,8 +168,8 @@ func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, tradeChan 
 
 		for {
 			var message struct {
-				Stream string           `json:"stream"`
-				Data   BinanceSpotTrade `json:"data"`
+				Stream string          `json:"stream"`
+				Data   json.RawMessage `json:"data"`
 			}
 
 			err := conn.ReadJSON(&message)
@@ -135,37 +179,58 @@ func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, tradeChan 
 				break
 			}
 
-			price, err := strconv.ParseFloat(message.Data.Price, 64)
-			if err != nil {
-				continue
-			}
+			if strings.Contains(message.Stream, "@bookTicker") {
+				var bookTicker BinanceSpotBookTicker
+				if err := json.Unmarshal(message.Data, &bookTicker); err != nil {
+					continue
+				}
 
-			// Normalize trade side (isMaker: false = buy aggressor, true = sell aggressor)
-			var side string
-			if !message.Data.IsMaker {
-				side = "buy"
-			} else {
-				side = "sell"
-			}
+				bidPrice, err1 := strconv.ParseFloat(bookTicker.BestBidPrice, 64)
+				askPrice, err2 := strconv.ParseFloat(bookTicker.BestAskPrice, 64)
+				if err1 != nil || err2 != nil {
+					continue
+				}
 
-			priceData := PriceData{
-				Symbol:    message.Data.Symbol,
-				Exchange:  "binance_spot",
-				Price:     price,
-				Timestamp: message.Data.TradeTime,
-			}
+				orderbookData := OrderbookData{
+					Symbol:    bookTicker.Symbol,
+					Exchange:  "binance_spot",
+					BestBid:   bidPrice,
+					BestAsk:   askPrice,
+					Timestamp: bookTicker.EventTime,
+				}
 
-			tradeData := TradeData{
-				Symbol:    message.Data.Symbol,
-				Exchange:  "binance_spot",
-				Price:     price,
-				Quantity:  message.Data.Quantity,
-				Side:      side,
-				Timestamp: message.Data.TradeTime,
-			}
+				orderbookChan <- orderbookData
 
-			priceChan <- priceData
-			tradeChan <- tradeData
+			} else if strings.Contains(message.Stream, "@aggTrade") {
+				var trade BinanceSpotTrade
+				if err := json.Unmarshal(message.Data, &trade); err != nil {
+					continue
+				}
+
+				price, err := strconv.ParseFloat(trade.Price, 64)
+				if err != nil {
+					continue
+				}
+
+				// Normalize trade side (isMaker: false = buy aggressor, true = sell aggressor)
+				var side string
+				if !trade.IsMaker {
+					side = "buy"
+				} else {
+					side = "sell"
+				}
+
+				tradeData := TradeData{
+					Symbol:    trade.Symbol,
+					Exchange:  "binance_spot",
+					Price:     price,
+					Quantity:  trade.Quantity,
+					Side:      side,
+					Timestamp: trade.TradeTime,
+				}
+
+				tradeChan <- tradeData
+			}
 		}
 
 		time.Sleep(2 * time.Second)

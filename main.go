@@ -29,6 +29,7 @@ type FuturesScanner struct {
 	clientsMutex     sync.RWMutex
 	upgrader         websocket.Upgrader
 	priceChan        chan exchanges.PriceData
+	orderbookChan    chan exchanges.OrderbookData
 	tradeChan        chan exchanges.TradeData
 	lastOpportunity  map[string]time.Time // Track last alert per symbol
 	opportunityMutex sync.RWMutex
@@ -39,6 +40,7 @@ func NewFuturesScanner() *FuturesScanner {
 		prices:          make(map[string]map[string]float64),
 		wsClients:       make(map[*websocket.Conn]bool),
 		priceChan:       make(chan exchanges.PriceData, 1000),
+		orderbookChan:   make(chan exchanges.OrderbookData, 1000),
 		tradeChan:       make(chan exchanges.TradeData, 1000),
 		lastOpportunity: make(map[string]time.Time),
 		upgrader: websocket.Upgrader{
@@ -55,9 +57,25 @@ func (s *FuturesScanner) processPrices() {
 	}
 }
 
+func (s *FuturesScanner) processOrderbooks() {
+	for orderbookData := range s.orderbookChan {
+		// Calculate mid price from best bid and best ask
+		midPrice := (orderbookData.BestBid + orderbookData.BestAsk) / 2
+		
+		priceData := exchanges.PriceData{
+			Symbol:    orderbookData.Symbol,
+			Exchange:  orderbookData.Exchange,
+			Price:     midPrice,
+			Timestamp: orderbookData.Timestamp,
+		}
+		
+		s.updatePrice(priceData)
+	}
+}
+
 func (s *FuturesScanner) processTrades() {
 	for range s.tradeChan {
-		// Discard trade data since we don't need CVD anymore
+		// Keep trade data for future use but don't use for pricing
 	}
 }
 
@@ -270,20 +288,21 @@ func main() {
 
 	// Start processing goroutines
 	go scanner.processPrices()
+	go scanner.processOrderbooks()
 	go scanner.processTrades()
 
-	// Start exchange connections
-	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	// go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.tradeChan) // Disabled for now
-	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectGateFutures(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectParadexFutures(symbols, scanner.priceChan, scanner.tradeChan)
+	// Start exchange connections with orderbook feeds
+	go exchanges.ConnectBinanceFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	go exchanges.ConnectBybitFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	go exchanges.ConnectHyperliquidFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	// go exchanges.ConnectKrakenFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan) // Disabled for now
+	go exchanges.ConnectOKXFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	go exchanges.ConnectGateFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	go exchanges.ConnectParadexFutures(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
 	
-	// Start spot exchange connections
-	go exchanges.ConnectBinanceSpot(symbols, scanner.priceChan, scanner.tradeChan)
-	go exchanges.ConnectBybitSpot(symbols, scanner.priceChan, scanner.tradeChan)
+	// Start spot exchange connections with orderbook feeds
+	go exchanges.ConnectBinanceSpot(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	go exchanges.ConnectBybitSpot(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 
