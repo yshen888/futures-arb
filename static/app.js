@@ -11,8 +11,11 @@ class FuturesArbitrageScanner {
         this.currentSort = { field: 'timestamp', direction: 'desc' };
         this.minProfitFilter = 0.05;
         
+        // Exchange visibility settings with localStorage persistence
+        this.enabledExchanges = this.loadEnabledExchanges();
+        
         this.chart = null;
-        this.chartData = [[], [], [], [], [], [], [], [], [], []]; // timestamps, binance_futures, bybit_futures, hyperliquid, kraken_futures, okx, gate, paradex, binance_spot, bybit_spot
+        this.chartSeries = new Map(); // Map to store series for each exchange
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
@@ -25,6 +28,55 @@ class FuturesArbitrageScanner {
         this.chartUpdateThrottle = 100; // ms
         
         this.init();
+    }
+
+    // Load enabled exchanges from localStorage
+    loadEnabledExchanges() {
+        const defaultExchanges = {
+            'binance_futures': true,
+            'bybit_futures': true,
+            'hyperliquid_futures': true,
+            'kraken_futures': true,
+            'okx_futures': true,
+            'gate_futures': true,
+            'paradex_futures': true,
+            'binance_spot': true,
+            'bybit_spot': true
+        };
+        
+        try {
+            const stored = localStorage.getItem('enabledExchanges');
+            return stored ? { ...defaultExchanges, ...JSON.parse(stored) } : defaultExchanges;
+        } catch (error) {
+            console.warn('Failed to load enabled exchanges from localStorage:', error);
+            return defaultExchanges;
+        }
+    }
+    
+    // Save enabled exchanges to localStorage
+    saveEnabledExchanges() {
+        try {
+            localStorage.setItem('enabledExchanges', JSON.stringify(this.enabledExchanges));
+        } catch (error) {
+            console.warn('Failed to save enabled exchanges to localStorage:', error);
+        }
+    }
+    
+    // Toggle exchange visibility
+    toggleExchange(exchange) {
+        this.enabledExchanges[exchange] = !this.enabledExchanges[exchange];
+        this.saveEnabledExchanges();
+        
+        // Update all components immediately
+        this.updateExchangeList();
+        this.performChartUpdate(); // Force immediate chart update, bypassing throttling
+        this.updateSpreadsMatrix();
+        this.updateOpportunitiesTable();
+    }
+    
+    // Check if exchange is enabled
+    isExchangeEnabled(exchange) {
+        return this.enabledExchanges[exchange] !== false;
     }
 
     // Smart price formatting based on price value
@@ -59,7 +111,7 @@ class FuturesArbitrageScanner {
 
         window.addEventListener('resize', () => {
             if (this.chart) {
-                this.chart.setSize({
+                this.chart.applyOptions({
                     width: this.getChartWidth(),
                     height: this.getChartHeight()
                 });
@@ -84,188 +136,81 @@ class FuturesArbitrageScanner {
     setupChart() {
         const chartContainer = document.getElementById('chart');
         
-        // Initialize with minimal data to show chart immediately
-        const now = Date.now() / 1000;
-        this.chartData = [
-            [now - 60, now],
-            [null, null], // binance_futures
-            [null, null], // bybit_futures
-            [null, null], // hyperliquid_futures
-            [null, null], // kraken_futures
-            [null, null], // okx_futures
-            [null, null], // gate_futures
-            [null, null], // paradex_futures
-            [null, null], // binance_spot
-            [null, null]  // bybit_spot
-        ];
-        
-        const opts = {
+        // Create TradingView chart
+        this.chart = LightweightCharts.createChart(chartContainer, {
             width: this.getChartWidth(),
             height: this.getChartHeight(),
-            plugins: [
-                {
-                    hooks: {
-                        drawClear: [
-                            u => {
-                                const ctx = u.ctx;
-                                ctx.fillStyle = '#0f0f0f';
-                                ctx.fillRect(0, 0, u.over.width, u.over.height);
-                            }
-                        ]
-                    }
-                }
-            ],
-            scales: {
-                x: {
-                    time: true,
-                    space: 60,
-                },
-                y: {
-                    auto: true,
-                    space: 60,
-                }
+            layout: {
+                background: { color: '#0f0f0f' },
+                textColor: '#e0e0e0',
+                fontSize: 11,
+                fontFamily: 'JetBrains Mono, Monaco, Consolas, monospace',
+                attributionLogo: false
             },
-            axes: [
-                {
-                    stroke: '#444',
-                    grid: {
-                        show: true,
-                        stroke: '#222',
-                        width: 1,
-                    },
-                    ticks: {
-                        show: true,
-                        stroke: '#444',
-                        width: 1,
-                        size: 5,
-                    },
-                    font: '11px JetBrains Mono, Monaco, Consolas, monospace',
-                    labelFont: '11px JetBrains Mono, Monaco, Consolas, monospace',
-                    size: 60,
-                    gap: 8,
-                    stroke: '#888',
-                },
-                {
-                    stroke: '#444',
-                    grid: {
-                        show: true,
-                        stroke: '#222',
-                        width: 1,
-                    },
-                    ticks: {
-                        show: true,
-                        stroke: '#444',
-                        width: 1,
-                        size: 5,
-                    },
-                    font: '11px JetBrains Mono, Monaco, Consolas, monospace',
-                    labelFont: '11px JetBrains Mono, Monaco, Consolas, monospace',
-                    size: 80,
-                    gap: 5,
-                    stroke: '#888',
-                    values: (_, vals) => vals.map(v => '$' + this.formatPrice(v)),
-                }
-            ],
-            series: [
-                {},
-                {
-                    label: "Binance Futures",
-                    stroke: "#f0b90b",
-                    width: 2,
-                    spanGaps: false,
-                    dash: [],
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Bybit Futures",
-                    stroke: "#f7931a",
-                    width: 2,
-                    spanGaps: false,
-                    dash: [],
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Hyperliquid Futures",
-                    stroke: "#97FCE4",
-                    width: 2,
-                    spanGaps: false,
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Kraken Futures",
-                    stroke: "#5a5aff",
-                    width: 2,
-                    spanGaps: false,
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "OKX Futures",
-                    stroke: "#1890ff",
-                    width: 2,
-                    spanGaps: false,
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Gate.io Futures",
-                    stroke: "#6c5ce7",
-                    width: 2,
-                    spanGaps: false,
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Paradex Futures",
-                    stroke: "#ff6b6b",
-                    width: 2,
-                    spanGaps: false,
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Binance Spot",
-                    stroke: "#f0b90b",
-                    width: 2,
-                    spanGaps: false,
-                    dash: [5, 5],
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-                {
-                    label: "Bybit Spot",
-                    stroke: "#f7931a",
-                    width: 2,
-                    spanGaps: false,
-                    dash: [5, 5],
-                    value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
-                },
-            ],
-            legend: {
-                show: false,
+            grid: {
+                vertLines: { color: '#222' },
+                horzLines: { color: '#222' },
             },
-            cursor: {
-                show: true,
-                x: true,
-                y: true,
-                lock: false,
-                focus: {
-                    prox: 16,
-                },
-                drag: {
-                    setScale: false,
-                    x: true,
-                    y: false,
-                },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
             },
-            select: {
-                show: false,
+            rightPriceScale: {
+                borderColor: '#444',
+                textColor: '#888',
             },
-            hooks: {
-                setCursor: [
-                    (u) => {
-                        this.updateCustomLegend(u);
-                    }
-                ]
-            }
-        };
+            timeScale: {
+                borderColor: '#444',
+                textColor: '#888',
+                timeVisible: true,
+                secondsVisible: false,
+            },
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+            },
+            handleScale: {
+                axisPressedMouseMove: true,
+                mouseWheel: true,
+                pinch: true,
+            },
+        });
 
-        this.chart = new uPlot(opts, this.chartData, chartContainer);
+        // Define exchange configurations
+        const exchangeConfigs = [
+            { key: 'binance_futures', label: 'Binance Futures', color: '#f0b90b', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'bybit_futures', label: 'Bybit Futures', color: '#f7931a', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'hyperliquid_futures', label: 'Hyperliquid Futures', color: '#97FCE4', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'kraken_futures', label: 'Kraken Futures', color: '#5a5aff', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'okx_futures', label: 'OKX Futures', color: '#1890ff', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'gate_futures', label: 'Gate.io Futures', color: '#6c5ce7', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'paradex_futures', label: 'Paradex Futures', color: '#ff6b6b', lineStyle: LightweightCharts.LineStyle.Solid },
+            { key: 'binance_spot', label: 'Binance Spot', color: '#f0b90b', lineStyle: LightweightCharts.LineStyle.Dashed },
+            { key: 'bybit_spot', label: 'Bybit Spot', color: '#f7931a', lineStyle: LightweightCharts.LineStyle.Dashed },
+        ];
+
+        // Create line series for each exchange
+        exchangeConfigs.forEach(config => {
+            const series = this.chart.addLineSeries({
+                color: config.color,
+                lineWidth: 2,
+                lineStyle: config.lineStyle,
+                crosshairMarkerVisible: true,
+                crosshairMarkerRadius: 4,
+                crosshairMarkerBorderColor: config.color,
+                crosshairMarkerBackgroundColor: config.color,
+                lastValueVisible: true,
+                priceLineVisible: false,
+                title: config.label,
+            });
+            
+            this.chartSeries.set(config.key, series);
+        });
+
+        // Set up crosshair move handler for custom legend
+        this.chart.subscribeCrosshairMove(param => {
+            this.updateCustomLegend(param);
+        });
+
         this.updateChartTitle();
     }
 
@@ -430,10 +375,15 @@ class FuturesArbitrageScanner {
             const changeClass = data.change >= 0 ? 'up' : 'down';
             const changeSymbol = data.change >= 0 ? '↑' : '↓';
             const color = exchangeColors[exchange] || '#888';
+            const isEnabled = this.isExchangeEnabled(exchange);
+            const opacity = isEnabled ? '1' : '0.4';
             
             html += `
-                <div class="exchange-item">
+                <div class="exchange-item" style="opacity: ${opacity};">
                     <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="checkbox-${exchange}" ${isEnabled ? 'checked' : ''} 
+                               onchange="scanner.toggleExchange('${exchange}')"
+                               style="margin-right: 4px; cursor: pointer;">
                         <div class="exchange-color-dot" style="background: ${color};"></div>
                         <div class="exchange-name">${exchange.replace('_', ' ')}</div>
                     </div>
@@ -469,115 +419,32 @@ class FuturesArbitrageScanner {
     performChartUpdate() {
         if (!this.chart || this.priceHistory.size === 0) return;
 
-        const binanceHistory = this.priceHistory.get('binance_futures') || [];
-        const bybitHistory = this.priceHistory.get('bybit_futures') || [];
-        const hyperliquidHistory = this.priceHistory.get('hyperliquid_futures') || [];
-        const krakenHistory = this.priceHistory.get('kraken_futures') || [];
-        const okxHistory = this.priceHistory.get('okx_futures') || [];
-        const gateHistory = this.priceHistory.get('gate_futures') || [];
-        const paradexHistory = this.priceHistory.get('paradex_futures') || [];
-        const binanceSpotHistory = this.priceHistory.get('binance_spot') || [];
-        const bybitSpotHistory = this.priceHistory.get('bybit_spot') || [];
+        const exchangeNames = ['binance_futures', 'bybit_futures', 'hyperliquid_futures', 'kraken_futures', 'okx_futures', 'gate_futures', 'paradex_futures', 'binance_spot', 'bybit_spot'];
         
-        if (binanceHistory.length === 0 && bybitHistory.length === 0 && hyperliquidHistory.length === 0 && krakenHistory.length === 0 && okxHistory.length === 0 && gateHistory.length === 0 && paradexHistory.length === 0 && binanceSpotHistory.length === 0 && bybitSpotHistory.length === 0) return;
+        exchangeNames.forEach(exchange => {
+            const series = this.chartSeries.get(exchange);
+            if (!series) return;
 
-        // Create combined timestamp array
-        const allTimestamps = new Set();
-        binanceHistory.forEach(point => allTimestamps.add(point[0]));
-        bybitHistory.forEach(point => allTimestamps.add(point[0]));
-        hyperliquidHistory.forEach(point => allTimestamps.add(point[0]));
-        krakenHistory.forEach(point => allTimestamps.add(point[0]));
-        okxHistory.forEach(point => allTimestamps.add(point[0]));
-        gateHistory.forEach(point => allTimestamps.add(point[0]));
-        paradexHistory.forEach(point => allTimestamps.add(point[0]));
-        binanceSpotHistory.forEach(point => allTimestamps.add(point[0]));
-        bybitSpotHistory.forEach(point => allTimestamps.add(point[0]));
-        
-        const timestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-        
-        // Create price arrays with forward-filled values for missing data points
-        const binancePrices = [];
-        const bybitPrices = [];
-        const hyperliquidPrices = [];
-        const krakenPrices = [];
-        const okxPrices = [];
-        const gatePrices = [];
-        const paradexPrices = [];
-        const binanceSpotPrices = [];
-        const bybitSpotPrices = [];
-        
-        const binanceMap = new Map(binanceHistory);
-        const bybitMap = new Map(bybitHistory);
-        const hyperliquidMap = new Map(hyperliquidHistory);
-        const krakenMap = new Map(krakenHistory);
-        const okxMap = new Map(okxHistory);
-        const gateMap = new Map(gateHistory);
-        const paradexMap = new Map(paradexHistory);
-        const binanceSpotMap = new Map(binanceSpotHistory);
-        const bybitSpotMap = new Map(bybitSpotHistory);
-        
-        let lastBinancePrice = null;
-        let lastBybitPrice = null;
-        let lastHyperliquidPrice = null;
-        let lastKrakenPrice = null;
-        let lastOkxPrice = null;
-        let lastGatePrice = null;
-        let lastParadexPrice = null;
-        let lastBinanceSpotPrice = null;
-        let lastBybitSpotPrice = null;
-        
-        timestamps.forEach(timestamp => {
-            const binancePrice = binanceMap.get(timestamp);
-            const bybitPrice = bybitMap.get(timestamp);
-            const hyperliquidPrice = hyperliquidMap.get(timestamp);
-            const krakenPrice = krakenMap.get(timestamp);
-            const okxPrice = okxMap.get(timestamp);
-            const gatePrice = gateMap.get(timestamp);
-            const paradexPrice = paradexMap.get(timestamp);
-            const binanceSpotPrice = binanceSpotMap.get(timestamp);
-            const bybitSpotPrice = bybitSpotMap.get(timestamp);
-            
-            if (binancePrice !== undefined) {
-                lastBinancePrice = binancePrice;
+            if (this.isExchangeEnabled(exchange)) {
+                const history = this.priceHistory.get(exchange) || [];
+                if (history.length > 0) {
+                    // Convert data to TradingView format: { time: timestamp, value: price }
+                    const seriesData = history.map(([timestamp, price]) => ({
+                        time: timestamp,
+                        value: price
+                    }));
+                    
+                    series.setData(seriesData);
+                } else {
+                    // Clear data if no history
+                    series.setData([]);
+                }
+            } else {
+                // Clear data for disabled exchanges
+                series.setData([]);
             }
-            if (bybitPrice !== undefined) {
-                lastBybitPrice = bybitPrice;
-            }
-            if (hyperliquidPrice !== undefined) {
-                lastHyperliquidPrice = hyperliquidPrice;
-            }
-            if (krakenPrice !== undefined) {
-                lastKrakenPrice = krakenPrice;
-            }
-            if (okxPrice !== undefined) {
-                lastOkxPrice = okxPrice;
-            }
-            if (gatePrice !== undefined) {
-                lastGatePrice = gatePrice;
-            }
-            if (paradexPrice !== undefined) {
-                lastParadexPrice = paradexPrice;
-            }
-            if (binanceSpotPrice !== undefined) {
-                lastBinanceSpotPrice = binanceSpotPrice;
-            }
-            if (bybitSpotPrice !== undefined) {
-                lastBybitSpotPrice = bybitSpotPrice;
-            }
-
-            binancePrices.push(lastBinancePrice);
-            bybitPrices.push(lastBybitPrice);
-            hyperliquidPrices.push(lastHyperliquidPrice);
-            krakenPrices.push(lastKrakenPrice);
-            okxPrices.push(lastOkxPrice);
-            gatePrices.push(lastGatePrice);
-            paradexPrices.push(lastParadexPrice);
-            binanceSpotPrices.push(lastBinanceSpotPrice);
-            bybitSpotPrices.push(lastBybitSpotPrice);
         });
 
-        this.chartData = [timestamps, binancePrices, bybitPrices, hyperliquidPrices, krakenPrices, okxPrices, gatePrices, paradexPrices, binanceSpotPrices, bybitSpotPrices];
-        this.chart.setData(this.chartData);
         this.lastChartUpdate = performance.now();
     }
 
@@ -626,9 +493,11 @@ class FuturesArbitrageScanner {
         const tbody = document.getElementById('opportunitiesTableBody');
         const stats = document.getElementById('opportunitiesStats');
         
-        // Filter opportunities
+        // Filter opportunities by profit and enabled exchanges
         const filteredOpportunities = this.arbitrageOpportunities.filter(opp =>
-            opp.profit_pct >= this.minProfitFilter
+            opp.profit_pct >= this.minProfitFilter &&
+            this.isExchangeEnabled(opp.buy_exchange) &&
+            this.isExchangeEnabled(opp.sell_exchange)
         );
 
         // Sort opportunities
@@ -713,11 +582,12 @@ class FuturesArbitrageScanner {
             return;
         }
 
-        // Get all exchanges
-        const exchanges = Object.keys(spreadData.spreads);
+        // Get only enabled exchanges
+        const allExchanges = Object.keys(spreadData.spreads);
+        const exchanges = allExchanges.filter(exchange => this.isExchangeEnabled(exchange));
         
         if (exchanges.length === 0) {
-            matrixContainer.innerHTML = '<div class="loading">No exchange data available</div>';
+            matrixContainer.innerHTML = '<div class="loading">No enabled exchanges with data</div>';
             return;
         }
 
@@ -802,10 +672,10 @@ class FuturesArbitrageScanner {
         this.priceHistory.clear();
         this.arbitrageOpportunities = [];
         
-        this.chartData = [[], [], [], [], [], [], [], [], [], []];
-        if (this.chart) {
-            this.chart.setData(this.chartData);
-        }
+        // Clear all series data
+        this.chartSeries.forEach(series => {
+            series.setData([]);
+        });
 
         this.updateChartTitle();
         this.updateExchangeList();
@@ -835,78 +705,77 @@ class FuturesArbitrageScanner {
         }
     }
 
-    updateCustomLegend(u) {
+    updateCustomLegend(param) {
         const legend = document.getElementById('chartLegend');
         const legendTime = document.getElementById('legendTime');
-        const binanceValue = document.getElementById('binanceValue');
-        const bybitValue = document.getElementById('bybitValue');
-        const hyperliquidValue = document.getElementById('hyperliquidValue');
-        const okxValue = document.getElementById('okxValue');
 
-        if (u.cursor.idx === null) {
+        if (!param.time) {
             legend.classList.remove('visible');
             return;
         }
 
         legend.classList.add('visible');
+        
+        // Update disabled state for all legend items
+        this.updateLegendItemStates();
 
-        // Get the data at cursor position
-        const idx = u.cursor.idx;
-        const timestamp = u.data[0][idx];
-        const binancePrice = u.data[1][idx];
-        const bybitPrice = u.data[2][idx];
-        const hyperliquidPrice = u.data[3][idx];
-        const krakenPrice = u.data[4][idx];
-        const okxPrice = u.data[5][idx];
-        const gatePrice = u.data[6][idx];
-        const paradexPrice = u.data[7][idx];
-        const binanceSpotPrice = u.data[8][idx];
-        const bybitSpotPrice = u.data[9][idx];
+        // Format timestamp
+        const date = new Date(param.time * 1000);
+        const timeString = date.toLocaleString();
+        const ms = Math.floor((param.time * 1000) % 1000);
+        legendTime.textContent = `${timeString}.${ms.toString().padStart(3, '0')}`;
 
-        // Format timestamp with milliseconds
-        if (timestamp) {
-            const date = new Date(timestamp * 1000);
-            const timeString = date.toLocaleString();
-            const ms = Math.floor((timestamp * 1000) % 1000);
-            legendTime.textContent = `${timeString}.${ms.toString().padStart(3, '0')}`;
-        } else {
-            legendTime.textContent = '--';
-        }
+        // Update values for each exchange
+        const exchangeElements = {
+            'binance_futures': 'binanceValue',
+            'bybit_futures': 'bybitValue',
+            'hyperliquid_futures': 'hyperliquidValue',
+            'kraken_futures': 'krakenValue',
+            'okx_futures': 'okxValue',
+            'gate_futures': 'gateValue',
+            'paradex_futures': 'paradexValue',
+            'binance_spot': 'binanceSpotValue',
+            'bybit_spot': 'bybitSpotValue'
+        };
 
-        // Update values
-        binanceValue.textContent = binancePrice ? `$${this.formatPrice(binancePrice)}` : '--';
-        bybitValue.textContent = bybitPrice ? `$${this.formatPrice(bybitPrice)}` : '--';
-        hyperliquidValue.textContent = hyperliquidPrice ? `$${this.formatPrice(hyperliquidPrice)}` : '--';
-        
-        const krakenValue = document.getElementById('krakenValue');
-        if (krakenValue) {
-            krakenValue.textContent = krakenPrice ? `$${this.formatPrice(krakenPrice)}` : '--';
-        }
-        
-        okxValue.textContent = okxPrice ? `$${this.formatPrice(okxPrice)}` : '--';
-        
-        const gateValue = document.getElementById('gateValue');
-        if (gateValue) {
-            gateValue.textContent = gatePrice ? `$${this.formatPrice(gatePrice)}` : '--';
-        }
-        
-        const paradexValue = document.getElementById('paradexValue');
-        if (paradexValue) {
-            paradexValue.textContent = paradexPrice ? `$${this.formatPrice(paradexPrice)}` : '--';
-        }
-        
-        const binanceSpotValue = document.getElementById('binanceSpotValue');
-        if (binanceSpotValue) {
-            binanceSpotValue.textContent = binanceSpotPrice ? `$${this.formatPrice(binanceSpotPrice)}` : '--';
-        }
-        
-        const bybitSpotValue = document.getElementById('bybitSpotValue');
-        if (bybitSpotValue) {
-            bybitSpotValue.textContent = bybitSpotPrice ? `$${this.formatPrice(bybitSpotPrice)}` : '--';
-        }
+        Object.entries(exchangeElements).forEach(([exchange, elementId]) => {
+            const element = document.getElementById(elementId);
+            if (element) {
+                const series = this.chartSeries.get(exchange);
+                if (series && this.isExchangeEnabled(exchange) && param.seriesData && param.seriesData.has(series)) {
+                    const price = param.seriesData.get(series);
+                    element.textContent = price ? `$${this.formatPrice(price.value)}` : '--';
+                } else {
+                    element.textContent = '--';
+                }
+            }
+        });
     }
-
-
+    
+    updateLegendItemStates() {
+        const legendItems = document.querySelectorAll('#legendValues .legend-item');
+        const exchangeMapping = [
+            { element: legendItems[0], exchange: 'binance_futures' },
+            { element: legendItems[1], exchange: 'bybit_futures' },
+            { element: legendItems[2], exchange: 'hyperliquid_futures' },
+            { element: legendItems[3], exchange: 'kraken_futures' },
+            { element: legendItems[4], exchange: 'okx_futures' },
+            { element: legendItems[5], exchange: 'gate_futures' },
+            { element: legendItems[6], exchange: 'paradex_futures' },
+            { element: legendItems[7], exchange: 'binance_spot' },
+            { element: legendItems[8], exchange: 'bybit_spot' }
+        ];
+        
+        exchangeMapping.forEach(({ element, exchange }) => {
+            if (element) {
+                if (this.isExchangeEnabled(exchange)) {
+                    element.classList.remove('disabled');
+                } else {
+                    element.classList.add('disabled');
+                }
+            }
+        });
+    }
 
     startFPSCounter() {
         const fpsCounter = document.getElementById('fpsCounter');

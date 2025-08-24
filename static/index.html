@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto Arbitrage Scanner</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uPlot.min.css">
     <style>
         * {
             margin: 0;
@@ -553,19 +552,6 @@
             }
         }
 
-        .uplot {
-            background: transparent !important;
-        }
-
-        .u-legend {
-            background: rgba(26, 26, 26, 0.9) !important;
-            border: 1px solid #333 !important;
-            color: #e0e0e0 !important;
-        }
-
-        .u-legend .u-label {
-            color: #e0e0e0 !important;
-        }
 
         .chart-legend {
             position: absolute;
@@ -643,12 +629,12 @@
 
         .legend-color.binance-spot {
             background: #f0b90b;
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
         }
 
         .legend-color.bybit-spot {
             background: #f7931a;
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px);
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
         }
 
         .legend-label {
@@ -660,6 +646,10 @@
         .legend-value {
             color: #e0e0e0;
             font-weight: bold;
+        }
+
+        .legend-item.disabled {
+            opacity: 0.3;
         }
 
         .scrollbar {
@@ -841,7 +831,7 @@
     </div>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uPlot.iife.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
     <script src="app.js"></script>
 </body>
 
