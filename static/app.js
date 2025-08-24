@@ -56,9 +56,13 @@ class FuturesArbitrageScanner {
         }
     }
     
-    // Toggle exchange visibility
+    // Toggle exchange visibility (now mainly used by non-UI code)
     toggleExchange(exchange) {
+        const oldState = this.enabledExchanges[exchange];
         this.enabledExchanges[exchange] = !this.enabledExchanges[exchange];
+        const newState = this.enabledExchanges[exchange];
+        console.log(`Toggle ${exchange}: ${oldState} -> ${newState}`);
+        
         this.saveEnabledExchanges();
         
         // Update all components immediately
@@ -66,6 +70,19 @@ class FuturesArbitrageScanner {
         this.performChartUpdate(); // Force immediate chart update, bypassing throttling
         this.updateSpreadsMatrix();
         this.updateOpportunitiesTable();
+    }
+    
+    // Update exchange item opacity without full HTML recreation
+    updateExchangeVisibility() {
+        const exchangeItems = document.querySelectorAll('.exchange-item');
+        exchangeItems.forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox && checkbox.dataset.exchange) {
+                const exchange = checkbox.dataset.exchange;
+                const isEnabled = this.isExchangeEnabled(exchange);
+                item.style.opacity = isEnabled ? '1' : '0.4';
+            }
+        });
     }
     
     // Check if exchange is enabled
@@ -90,6 +107,7 @@ class FuturesArbitrageScanner {
 
     init() {
         this.setupEventListeners();
+        this.setupExchangeCheckboxDelegation();
         this.setupChart();
         this.connectWebSocket();
         this.setupOpportunitiesTable();
@@ -122,6 +140,33 @@ class FuturesArbitrageScanner {
         clearButton.addEventListener('click', () => {
             this.arbitrageOpportunities = [];
             this.updateOpportunitiesTable();
+        });
+    }
+    
+    setupExchangeCheckboxDelegation() {
+        const exchangeList = document.getElementById('exchangeList');
+        
+        exchangeList.addEventListener('click', (event) => {
+            if (event.target.type === 'checkbox' && event.target.dataset.exchange) {
+                const exchange = event.target.dataset.exchange;
+                console.log(`Checkbox click event for exchange: ${exchange}`);
+                
+                // Toggle state immediately without HTML recreation
+                this.enabledExchanges[exchange] = !this.enabledExchanges[exchange];
+                console.log(`Toggle ${exchange}: -> ${this.enabledExchanges[exchange]}`);
+                
+                // Update checkbox state immediately
+                event.target.checked = this.enabledExchanges[exchange];
+                
+                // Save and update other components
+                this.saveEnabledExchanges();
+                this.performChartUpdate();
+                this.updateSpreadsMatrix();
+                this.updateOpportunitiesTable();
+                
+                // Update exchange list opacity without full recreation
+                this.updateExchangeVisibility();
+            }
         });
     }
 
@@ -350,6 +395,21 @@ class FuturesArbitrageScanner {
             return;
         }
 
+        // Check if we need to recreate HTML (structure changed) or just update prices
+        const existingItems = exchangeList.querySelectorAll('.exchange-item');
+        const needsRecreation = existingItems.length !== this.exchanges.size;
+        
+        if (needsRecreation) {
+            console.log('Recreating exchange list HTML');
+            this.recreateExchangeList();
+        } else {
+            // Just update prices and visual states without recreating HTML
+            this.updateExchangePrices();
+        }
+    }
+    
+    recreateExchangeList() {
+        const exchangeList = document.getElementById('exchangeList');
         const exchangeColors = {
             'binance_futures': '#f0b90b',
             'bybit_futures': '#f7931a',
@@ -371,10 +431,10 @@ class FuturesArbitrageScanner {
             const opacity = isEnabled ? '1' : '0.4';
             
             html += `
-                <div class="exchange-item" style="opacity: ${opacity};">
+                <div class="exchange-item" data-exchange="${exchange}" style="opacity: ${opacity};">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" id="checkbox-${exchange}" ${isEnabled ? 'checked' : ''} 
-                               onchange="scanner.toggleExchange('${exchange}')"
+                        <input type="checkbox" id="checkbox-${exchange}" ${isEnabled ? 'checked' : ''}
+                               data-exchange="${exchange}"
                                style="margin-right: 4px; cursor: pointer;">
                         <div class="exchange-color-dot" style="background: ${color};"></div>
                         <div class="exchange-name">${exchange.replace('_', ' ')}</div>
@@ -390,6 +450,27 @@ class FuturesArbitrageScanner {
         }
         
         exchangeList.innerHTML = html;
+    }
+    
+    updateExchangePrices() {
+        for (const [exchange, data] of this.exchanges.entries()) {
+            const exchangeItem = document.querySelector(`[data-exchange="${exchange}"]`);
+            if (exchangeItem) {
+                const priceElement = exchangeItem.querySelector('.exchange-price');
+                const changeElement = exchangeItem.querySelector('.price-change');
+                
+                if (priceElement) {
+                    priceElement.textContent = `$${this.formatPrice(data.price)}`;
+                }
+                
+                if (changeElement) {
+                    const changeClass = data.change >= 0 ? 'up' : 'down';
+                    const changeSymbol = data.change >= 0 ? '↑' : '↓';
+                    changeElement.className = `price-change ${changeClass}`;
+                    changeElement.textContent = `${changeSymbol} ${Math.abs(data.changePercent).toFixed(3)}%`;
+                }
+            }
+        }
     }
 
     updateChart() {
