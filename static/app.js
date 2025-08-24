@@ -501,7 +501,7 @@ class FuturesArbitrageScanner {
             'gate_futures': '#6c5ce7',
             'paradex_futures': '#ff6b6b',
             'binance_spot': '#ffb347',
-            'bybit_spot': '#dda0dd',
+            'bybit_spot': '#f7931a',
         };
 
         let html = '';
@@ -759,6 +759,9 @@ class FuturesArbitrageScanner {
             return;
         }
 
+        // Set dynamic grid columns: 1 for row headers + number of exchanges for data
+        matrixContainer.style.gridTemplateColumns = `60px repeat(${exchanges.length}, 1fr)`;
+        
         // Create matrix HTML
         let html = '';
         

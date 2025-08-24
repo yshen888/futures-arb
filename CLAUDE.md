@@ -1,1 +1,0 @@
-when you run the project run directly with go run and put a timeout so we dont run it indefinitely.
