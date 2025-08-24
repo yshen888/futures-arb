@@ -14,21 +14,20 @@ in crypto, this isn't hidden behind expensive pro feeds. you can actually see th
 - live arbitrage matrix: highlights when the price difference is big enough
 - watch multiple pairs: btcusdt, ethusdt, xrpusdt, solusdt
 - auto adjusts decimals by asset/price
-- live uplot charts
+- live tradingview lightweight charts
 - spot and alert on inefficient price gaps, in real time
 
 ## how does it work?
 
 - **backend (go):**
     - every exchange runs in its own goroutine, fetches orderbook data live via websockets
-    - calculates mid-price using (best bid + best ask) / 2 for accurate spread analysis
+    - calculates mid-price using (best bid + best ask) / 2
     - all the data gets passed through go channels, no locks slowing things down
-    - no missed updates or stalls if an exchange lags
     - once prices land, calculates spreads & arbitrage. broadcasts over one websocket to all frontends
 
 - **frontend:**
     - vanilla js
-    - uses uplot for charting millions of points
+    - uses tradingview lightweight charts
 
 ## how to run
 
