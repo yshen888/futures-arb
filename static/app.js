@@ -393,21 +393,6 @@ class FuturesArbitrageScanner {
         this.updateExchangeTooltip();
     }
 
-    addPriceToHistory(exchange, price, timestamp = null) {
-        const ts = timestamp ? timestamp / 1000 : Date.now() / 1000;
-        
-        if (!this.priceHistory.has(exchange)) {
-            this.priceHistory.set(exchange, []);
-        }
-
-        const history = this.priceHistory.get(exchange);
-        history.push([ts, price]);
-
-        if (history.length > this.maxHistoryPoints) {
-            history.shift();
-        }
-    }
-
     updateExchangeList() {
         const exchangeList = document.getElementById('exchangeList');
         

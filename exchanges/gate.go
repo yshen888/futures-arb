@@ -99,12 +99,18 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, orderbookC
 			continue
 		}
 
-		// Subscribe to orderbook for all symbols in one message
+		// Subscribe to orderbook for all symbols using legacy format which is simpler
+		// Gate.io requires payload format: [contract, limit, interval]
+		orderbookPayload := make([]string, 0)
+		for _, symbol := range gateSymbols {
+			orderbookPayload = append(orderbookPayload, symbol, "20", "0")
+		}
+		
 		orderbookSubscribeMsg := GateSubscribeMessage{
 			Time:    time.Now().Unix(),
 			Channel: "futures.order_book",
 			Event:   "subscribe",
-			Payload: gateSymbols,
+			Payload: orderbookPayload,
 		}
 
 		err = conn.WriteJSON(orderbookSubscribeMsg)

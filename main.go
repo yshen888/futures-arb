@@ -252,18 +252,21 @@ func (s *FuturesScanner) broadcastPrices() {
 }
 
 func (s *FuturesScanner) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	log.Printf("WebSocket connection attempt from %s", r.RemoteAddr)
+	
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
+		log.Printf("WebSocket upgrade error from %s: %v", r.RemoteAddr, err)
 		return
 	}
 	defer conn.Close()
 
 	s.clientsMutex.Lock()
 	s.wsClients[conn] = true
+	clientCount := len(s.wsClients)
 	s.clientsMutex.Unlock()
 
-	log.Printf("WebSocket client connected. Total clients: %d", len(s.wsClients))
+	log.Printf("WebSocket client connected from %s. Total clients: %d", r.RemoteAddr, clientCount)
 
 	defer func() {
 		s.clientsMutex.Lock()
@@ -315,7 +318,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8082"
 	}
 
 	log.Printf("Server starting on http://localhost:%s", port)
