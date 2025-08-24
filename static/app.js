@@ -5,8 +5,8 @@ class FuturesArbitrageScanner {
         this.priceHistory = new Map();
         this.arbitrageOpportunities = [];
         this.currentSpreads = new Map();
-        this.maxHistoryPoints = 1000;
-        this.maxOpportunities = 50;
+        this.maxHistoryPoints = 500; // Reduced from 1000
+        this.maxOpportunities = 25; // Reduced from 50
         this.connectedExchanges = new Set();
         this.currentSort = { field: 'timestamp', direction: 'desc' };
         this.minProfitFilter = 0.05;
@@ -20,6 +20,15 @@ class FuturesArbitrageScanner {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         
+        // Performance optimization: throttling
+        this.chartUpdatePending = false;
+        this.exchangeUpdatePending = false;
+        this.opportunitiesUpdatePending = false;
+        this.spreadsUpdatePending = false;
+        
+        // WebSocket message batching
+        this.messageQueue = [];
+        this.processingMessages = false;
         
         this.init();
     }
@@ -286,7 +295,7 @@ class FuturesArbitrageScanner {
             this.ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    this.handleWebSocketMessage(data);
+                    this.queueMessage(data);
                 } catch (error) {
                     console.error('Error parsing WebSocket message:', error);
                 }
@@ -320,6 +329,71 @@ class FuturesArbitrageScanner {
         }
     }
 
+    queueMessage(data) {
+        this.messageQueue.push(data);
+        if (!this.processingMessages) {
+            this.processingMessages = true;
+            setTimeout(() => this.processMessageQueue(), 50);
+        }
+    }
+    
+    processMessageQueue() {
+        const messagesToProcess = this.messageQueue.splice(0);
+        
+        // Group messages by type to batch similar operations
+        const priceUpdates = [];
+        const arbitrageOpportunities = [];
+        const spreadsUpdates = [];
+        const otherMessages = [];
+        
+        messagesToProcess.forEach(data => {
+            if (data.type === 'price_update') {
+                priceUpdates.push(data);
+            } else if (data.type === 'arbitrage') {
+                arbitrageOpportunities.push(data);
+            } else if (data.type === 'spreads') {
+                spreadsUpdates.push(data);
+            } else {
+                otherMessages.push(data);
+            }
+        });
+        
+        // Process price updates in batch
+        if (priceUpdates.length > 0) {
+            this.handleBatchedPriceUpdates(priceUpdates);
+        }
+        
+        // Process arbitrage opportunities
+        arbitrageOpportunities.forEach(data => {
+            this.handleArbitrageOpportunity(data.opportunity);
+        });
+        
+        // Process latest spreads update only
+        if (spreadsUpdates.length > 0) {
+            this.handleSpreadsUpdate(spreadsUpdates[spreadsUpdates.length - 1]);
+        }
+        
+        // Process other messages normally
+        otherMessages.forEach(data => {
+            this.handleWebSocketMessage(data);
+        });
+        
+        this.processingMessages = false;
+        
+        // Schedule UI updates
+        this.updateExchangeList();
+        this.updateChart();
+    }
+    
+    handleBatchedPriceUpdates(priceUpdates) {
+        priceUpdates.forEach(data => {
+            if (data.symbol === this.currentSymbol) {
+                this.updateExchangePrice(data.exchange, data.price);
+                this.addPriceToHistory(data.exchange, data.price, data.timestamp);
+            }
+        });
+    }
+
     handleWebSocketMessage(data) {
         if (data.type === 'prices') {
             this.updatePrices(data.prices);
@@ -339,8 +413,7 @@ class FuturesArbitrageScanner {
                     this.updateExchangePrice(exchange, price);
                     this.addPriceToHistory(exchange, price);
                 }
-                this.updateExchangeList();
-                this.updateChart();
+                // UI updates will be handled by processMessageQueue
                 break;
             }
         }
@@ -350,8 +423,7 @@ class FuturesArbitrageScanner {
         if (data.symbol === this.currentSymbol) {
             this.updateExchangePrice(data.exchange, data.price);
             this.addPriceToHistory(data.exchange, data.price, data.timestamp);
-            this.updateExchangeList();
-            this.updateChart();
+            // UI updates will be handled by processMessageQueue
         }
     }
 
@@ -388,6 +460,16 @@ class FuturesArbitrageScanner {
     }
 
     updateExchangeList() {
+        if (!this.exchangeUpdatePending) {
+            this.exchangeUpdatePending = true;
+            setTimeout(() => {
+                this.performExchangeListUpdate();
+                this.exchangeUpdatePending = false;
+            }, 100);
+        }
+    }
+    
+    performExchangeListUpdate() {
         const exchangeList = document.getElementById('exchangeList');
         
         if (this.exchanges.size === 0) {
@@ -474,7 +556,13 @@ class FuturesArbitrageScanner {
     }
 
     updateChart() {
-        this.performChartUpdate();
+        if (!this.chartUpdatePending) {
+            this.chartUpdatePending = true;
+            requestAnimationFrame(() => {
+                this.performChartUpdate();
+                this.chartUpdatePending = false;
+            });
+        }
     }
 
     performChartUpdate() {
@@ -550,6 +638,16 @@ class FuturesArbitrageScanner {
     }
 
     updateOpportunitiesTable() {
+        if (!this.opportunitiesUpdatePending) {
+            this.opportunitiesUpdatePending = true;
+            setTimeout(() => {
+                this.performOpportunitiesTableUpdate();
+                this.opportunitiesUpdatePending = false;
+            }, 250);
+        }
+    }
+    
+    performOpportunitiesTableUpdate() {
         const tbody = document.getElementById('opportunitiesTableBody');
         const stats = document.getElementById('opportunitiesStats');
         
@@ -634,6 +732,16 @@ class FuturesArbitrageScanner {
     }
 
     updateSpreadsMatrix() {
+        if (!this.spreadsUpdatePending) {
+            this.spreadsUpdatePending = true;
+            setTimeout(() => {
+                this.performSpreadsMatrixUpdate();
+                this.spreadsUpdatePending = false;
+            }, 300);
+        }
+    }
+    
+    performSpreadsMatrixUpdate() {
         const matrixContainer = document.getElementById('spreadsMatrix');
         const spreadData = this.currentSpreads.get(this.currentSymbol);
         
