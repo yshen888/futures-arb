@@ -280,7 +280,7 @@ class FuturesArbitrageScanner {
         wsStatusText.textContent = 'Connecting...';
 
         try {
-            this.ws = new WebSocket('ws://localhost:8080/ws');
+            this.ws = new WebSocket(`ws://${window.location.host}/ws`);
             
             this.ws.onopen = () => {
                 console.log('WebSocket connected');

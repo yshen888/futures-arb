@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"futures-arbitrage-scanner/exchanges"
 
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
 )
 
 type ArbitrageOpportunity struct {
@@ -152,9 +154,6 @@ func (s *FuturesScanner) checkArbitrage(symbol string) {
 				Timestamp:    now.UnixMilli(),
 			}
 
-			log.Printf("ARBITRAGE: %s %.3f%% | Buy %s@%.2f, Sell %s@%.2f",
-				symbol, profitPct, minExchange, minPrice, maxExchange, maxPrice)
-
 			s.broadcastOpportunity(opportunity)
 		}
 	}
@@ -282,6 +281,11 @@ func (s *FuturesScanner) handleWebSocket(w http.ResponseWriter, r *http.Request)
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found, using system environment variables")
+	}
+
 	scanner := NewFuturesScanner()
 
 	symbols := []string{"BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"}
@@ -309,6 +313,11 @@ func main() {
 	http.HandleFunc("/ws", scanner.handleWebSocket)
 	http.Handle("/", http.FileServer(http.Dir("./static/")))
 
-	log.Println("Server starting on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server starting on http://localhost:%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

@@ -27,10 +27,16 @@ type HyperliquidL2Book struct {
 	Data    json.RawMessage `json:"data"`
 }
 
+type HyperliquidLevel struct {
+	Price string `json:"px"`
+	Size  string `json:"sz"`
+	Count int    `json:"n"`
+}
+
 type HyperliquidL2BookData struct {
-	Coin   string     `json:"coin"`
-	Levels [][]string `json:"levels"`
-	Time   int64      `json:"time"`
+	Coin   string              `json:"coin"`
+	Levels [][]HyperliquidLevel `json:"levels"`
+	Time   int64               `json:"time"`
 }
 
 func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
@@ -149,11 +155,11 @@ func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData, ord
 					continue
 				}
 
-				if len(l2BookData.Levels) >= 2 {
-					// Hyperliquid l2Book format: levels[0] is best bid, levels[1] is best ask
-					// Each level is [price, size]
-					bestBid, err1 := strconv.ParseFloat(l2BookData.Levels[0][0], 64)
-					bestAsk, err2 := strconv.ParseFloat(l2BookData.Levels[1][0], 64)
+				if len(l2BookData.Levels) >= 2 && len(l2BookData.Levels[0]) > 0 && len(l2BookData.Levels[1]) > 0 {
+					// Hyperliquid l2Book format: levels[0] is bids, levels[1] is asks
+					// Each level has px (price), sz (size), n (count)
+					bestBid, err1 := strconv.ParseFloat(l2BookData.Levels[0][0].Price, 64)
+					bestAsk, err2 := strconv.ParseFloat(l2BookData.Levels[1][0].Price, 64)
 					if err1 != nil || err2 != nil {
 						continue
 					}

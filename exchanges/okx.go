@@ -26,6 +26,19 @@ type OKXFuturesTrade struct {
 	} `json:"data"`
 }
 
+type OKXFuturesOrderbook struct {
+	Arg struct {
+		Channel string `json:"channel"`
+		InstID  string `json:"instId"`
+	} `json:"arg"`
+	Data []struct {
+		InstID    string     `json:"instId"`
+		Bids      [][]string `json:"bids"`
+		Asks      [][]string `json:"asks"`
+		Timestamp string     `json:"ts"`
+	} `json:"data"`
+}
+
 type OKXSubscribeMessage struct {
 	Op   string `json:"op"`
 	Args []struct {
@@ -34,7 +47,7 @@ type OKXSubscribeMessage struct {
 	} `json:"args"`
 }
 
-func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://ws.okx.com:8443/ws/v5/public"
 
 	for {
