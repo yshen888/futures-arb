@@ -26,6 +26,10 @@ class FuturesArbitrageScanner {
         this.opportunitiesUpdatePending = false;
         this.spreadsUpdatePending = false;
         
+        // Realtime tracking
+        this.isAtRealtime = true;
+        this.lastUserScrollTime = 0;
+        
         // WebSocket message batching
         this.messageQueue = [];
         this.processingMessages = false;
@@ -150,6 +154,16 @@ class FuturesArbitrageScanner {
             this.arbitrageOpportunities = [];
             this.updateOpportunitiesTable();
         });
+
+        // Go to realtime button
+        const goToRealtimeBtn = document.getElementById('goToRealtimeBtn');
+        goToRealtimeBtn.addEventListener('click', () => {
+            if (this.chart) {
+                this.chart.timeScale().scrollToRealTime();
+                this.isAtRealtime = true;
+                this.lastUserScrollTime = 0;
+            }
+        });
     }
     
     setupExchangeCheckboxDelegation() {
@@ -255,6 +269,19 @@ class FuturesArbitrageScanner {
         // Set up crosshair move handler for custom legend
         this.chart.subscribeCrosshairMove(param => {
             this.updateCustomLegend(param);
+        });
+
+        // Track user interactions to determine if we should auto-scroll
+        this.chart.timeScale().subscribeVisibleTimeRangeChange(() => {
+            this.lastUserScrollTime = Date.now();
+            this.isAtRealtime = false;
+            
+            // Reset realtime flag after some time of inactivity
+            setTimeout(() => {
+                if (Date.now() - this.lastUserScrollTime > 5000) {
+                    this.isAtRealtime = true;
+                }
+            }, 5000);
         });
 
         this.updateChartTitle();
@@ -435,10 +462,28 @@ class FuturesArbitrageScanner {
         }
 
         const history = this.priceHistory.get(exchange);
-        history.push([ts, price]);
+        const newDataPoint = [ts, price];
+        history.push(newDataPoint);
 
         if (history.length > this.maxHistoryPoints) {
             history.shift();
+        }
+
+        // If exchange is enabled, immediately update the chart series with the new data point
+        if (this.isExchangeEnabled(exchange)) {
+            const series = this.chartSeries.get(exchange);
+            if (series) {
+                const chartDataPoint = {
+                    time: ts,
+                    value: price
+                };
+                series.update(chartDataPoint);
+                
+                // Auto-scroll to realtime for new price updates if user is at realtime position
+                if (this.chart && this.isAtRealtime && Date.now() - this.lastUserScrollTime > 3000) {
+                    this.chart.timeScale().scrollToRealTime();
+                }
+            }
         }
     }
 
@@ -594,6 +639,10 @@ class FuturesArbitrageScanner {
             }
         });
 
+        // Only auto-scroll to realtime if user hasn't manually interacted recently
+        if (this.isAtRealtime && Date.now() - this.lastUserScrollTime > 3000) {
+            this.chart.timeScale().scrollToRealTime();
+        }
     }
 
     setupOpportunitiesTable() {

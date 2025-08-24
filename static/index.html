@@ -672,6 +672,35 @@
         .scrollbar::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        .chart-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .realtime-btn {
+            font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 16px;
+            color: #e0e0e0;
+            background-color: #333;
+            border: 1px solid #555;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .realtime-btn:hover {
+            background-color: #444;
+            border-color: #00ff88;
+        }
+
+        .realtime-btn:active {
+            background-color: #00ff88;
+            color: #0a0a0a;
+        }
     </style>
 </head>
 
@@ -764,6 +793,9 @@
             <div class="chart-container" style="flex: 1.5;">
                 <div class="chart-header">
                     <div class="chart-title" id="chartTitle">Price Chart - BTCUSDT (Live)</div>
+                    <div class="chart-controls">
+                        <button id="goToRealtimeBtn" class="realtime-btn">Go to realtime</button>
+                    </div>
                 </div>
                 <div id="chart"
                     style="flex: 1; padding: 10px; overflow: hidden; position: relative; box-sizing: border-box;">
