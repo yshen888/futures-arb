@@ -60,7 +60,7 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookCh
 
 		log.Printf("Connected to OKX futures WebSocket")
 
-		// Subscribe to trades for all symbols
+		// Subscribe to both trades and orderbooks for all symbols
 		var subscribeArgs []struct {
 			Channel string `json:"channel"`
 			InstID  string `json:"instId"`
@@ -69,11 +69,22 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookCh
 		for _, symbol := range symbols {
 			// Convert symbol format (BTCUSDT -> BTC-USDT-SWAP for perpetual futures)
 			okxSymbol := convertToOKXSymbol(symbol)
+			
+			// Subscribe to trades
 			subscribeArgs = append(subscribeArgs, struct {
 				Channel string `json:"channel"`
 				InstID  string `json:"instId"`
 			}{
 				Channel: "trades",
+				InstID:  okxSymbol,
+			})
+			
+			// Subscribe to orderbooks (books5 for top 5 levels)
+			subscribeArgs = append(subscribeArgs, struct {
+				Channel string `json:"channel"`
+				InstID  string `json:"instId"`
+			}{
+				Channel: "books5",
 				InstID:  okxSymbol,
 			})
 		}
@@ -166,6 +177,7 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookCh
 
 					orderbookChan <- orderbookData
 				}
+				continue
 			}
 		}
 
