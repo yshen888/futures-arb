@@ -61,37 +61,6 @@
             position: relative;
         }
 
-        .tooltip {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: rgba(0, 0, 0, 0.9);
-            color: #e0e0e0;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 11px;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s, visibility 0.2s;
-            border: 1px solid #333;
-            z-index: 1000;
-            margin-top: 5px;
-        }
-
-        .tooltip::after {
-            content: '';
-            position: absolute;
-            bottom: 100%;
-            right: 15px;
-            border: 5px solid transparent;
-            border-bottom-color: rgba(0, 0, 0, 0.9);
-        }
-
-        .status-item:hover .tooltip {
-            opacity: 1;
-            visibility: visible;
-        }
 
         .status-dot {
             width: 8px;
@@ -552,104 +521,6 @@
         }
 
 
-        .chart-legend {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(26, 26, 26, 0.95);
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 12px;
-            font-size: 11px;
-            min-width: 180px;
-            z-index: 10;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s, visibility 0.2s;
-        }
-
-        .chart-legend.visible {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .legend-time {
-            color: #888;
-            margin-bottom: 8px;
-            font-size: 10px;
-            text-align: center;
-        }
-
-        .legend-values {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .legend-color {
-            width: 12px;
-            height: 2px;
-            border-radius: 1px;
-        }
-
-        .legend-color.binance {
-            background: #f0b90b;
-        }
-
-        .legend-color.bybit {
-            background: #f7931a;
-        }
-
-        .legend-color.hyperliquid {
-            background: #97FCE4;
-        }
-
-        .legend-color.kraken {
-            background: #5a5aff;
-        }
-
-        .legend-color.okx {
-            background: #1890ff;
-        }
-
-        .legend-color.gate {
-            background: #6c5ce7;
-        }
-
-        .legend-color.paradex {
-            background: #ff6b6b;
-        }
-
-        .legend-color.binance-spot {
-            background: #f0b90b;
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
-        }
-
-        .legend-color.bybit-spot {
-            background: #f7931a;
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
-        }
-
-        .legend-label {
-            color: #ccc;
-            font-size: 10px;
-            min-width: 50px;
-        }
-
-        .legend-value {
-            color: #e0e0e0;
-            font-weight: bold;
-        }
-
-        .legend-item.disabled {
-            opacity: 0.3;
-        }
 
         .scrollbar {
             scrollbar-width: thin;
@@ -712,7 +583,6 @@
                 <div class="status-item">
                     <div class="status-dot" id="wsStatus"></div>
                     <span id="wsStatusText">Connecting...</span>
-                    <div class="tooltip" id="exchangeTooltip">No exchanges connected</div>
                 </div>
             </div>
         </div>
@@ -799,56 +669,6 @@
                 </div>
                 <div id="chart"
                     style="flex: 1; padding: 10px; overflow: hidden; position: relative; box-sizing: border-box;">
-                    <div id="chartLegend" class="chart-legend">
-                        <div class="legend-time" id="legendTime">--</div>
-                        <div class="legend-values" id="legendValues">
-                            <div class="legend-item">
-                                <span class="legend-color binance"></span>
-                                <span class="legend-label">Binance:</span>
-                                <span class="legend-value" id="binanceValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color bybit"></span>
-                                <span class="legend-label">Bybit:</span>
-                                <span class="legend-value" id="bybitValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color hyperliquid"></span>
-                                <span class="legend-label">Hyperliquid:</span>
-                                <span class="legend-value" id="hyperliquidValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color kraken"></span>
-                                <span class="legend-label">Kraken:</span>
-                                <span class="legend-value" id="krakenValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color okx"></span>
-                                <span class="legend-label">OKX:</span>
-                                <span class="legend-value" id="okxValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color gate"></span>
-                                <span class="legend-label">Gate.io:</span>
-                                <span class="legend-value" id="gateValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color paradex"></span>
-                                <span class="legend-label">Paradex:</span>
-                                <span class="legend-value" id="paradexValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color binance-spot"></span>
-                                <span class="legend-label">Binance Spot:</span>
-                                <span class="legend-value" id="binanceSpotValue">--</span>
-                            </div>
-                            <div class="legend-item">
-                                <span class="legend-color bybit-spot"></span>
-                                <span class="legend-label">Bybit Spot:</span>
-                                <span class="legend-value" id="bybitSpotValue">--</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 

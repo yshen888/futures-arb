@@ -217,7 +217,7 @@ func (s *FuturesScanner) broadcastSpreads(symbol string, exchangePrices map[stri
 
 
 func (s *FuturesScanner) broadcastPrices() {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {

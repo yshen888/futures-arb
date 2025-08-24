@@ -266,10 +266,6 @@ class FuturesArbitrageScanner {
             this.chartSeries.set(config.key, series);
         });
 
-        // Set up crosshair move handler for custom legend
-        this.chart.subscribeCrosshairMove(param => {
-            this.updateCustomLegend(param);
-        });
 
         // Track user interactions to determine if we should auto-scroll
         this.chart.timeScale().subscribeVisibleTimeRangeChange(() => {
@@ -501,7 +497,6 @@ class FuturesArbitrageScanner {
         });
 
         this.connectedExchanges.add(exchange);
-        this.updateExchangeTooltip();
     }
 
     updateExchangeList() {
@@ -913,89 +908,8 @@ class FuturesArbitrageScanner {
         chartTitle.textContent = `Price Chart - ${this.currentSymbol} (Live)`;
     }
 
-    updateExchangeTooltip() {
-        const tooltip = document.getElementById('exchangeTooltip');
-        if (this.connectedExchanges.size === 0) {
-            tooltip.textContent = 'No exchanges connected';
-        } else {
-            const exchangeNames = Array.from(this.connectedExchanges)
-                .map(ex => ex.replace('_', ' ').toUpperCase())
-                .join(', ');
-            tooltip.textContent = `Connected: ${exchangeNames}`;
-        }
-    }
 
-    updateCustomLegend(param) {
-        const legend = document.getElementById('chartLegend');
-        const legendTime = document.getElementById('legendTime');
-
-        if (!param.time) {
-            legend.classList.remove('visible');
-            return;
-        }
-
-        legend.classList.add('visible');
-        
-        // Update disabled state for all legend items
-        this.updateLegendItemStates();
-
-        // Format timestamp
-        const date = new Date(param.time * 1000);
-        const timeString = date.toLocaleString();
-        const ms = Math.floor((param.time * 1000) % 1000);
-        legendTime.textContent = `${timeString}.${ms.toString().padStart(3, '0')}`;
-
-        // Update values for each exchange
-        const exchangeElements = {
-            'binance_futures': 'binanceValue',
-            'bybit_futures': 'bybitValue',
-            'hyperliquid_futures': 'hyperliquidValue',
-            'kraken_futures': 'krakenValue',
-            'okx_futures': 'okxValue',
-            'gate_futures': 'gateValue',
-            'paradex_futures': 'paradexValue',
-            'binance_spot': 'binanceSpotValue',
-            'bybit_spot': 'bybitSpotValue'
-        };
-
-        Object.entries(exchangeElements).forEach(([exchange, elementId]) => {
-            const element = document.getElementById(elementId);
-            if (element) {
-                const series = this.chartSeries.get(exchange);
-                if (series && this.isExchangeEnabled(exchange) && param.seriesData && param.seriesData.has(series)) {
-                    const price = param.seriesData.get(series);
-                    element.textContent = price ? `$${this.formatPrice(price.value)}` : '--';
-                } else {
-                    element.textContent = '--';
-                }
-            }
-        });
-    }
     
-    updateLegendItemStates() {
-        const legendItems = document.querySelectorAll('#legendValues .legend-item');
-        const exchangeMapping = [
-            { element: legendItems[0], exchange: 'binance_futures' },
-            { element: legendItems[1], exchange: 'bybit_futures' },
-            { element: legendItems[2], exchange: 'hyperliquid_futures' },
-            { element: legendItems[3], exchange: 'kraken_futures' },
-            { element: legendItems[4], exchange: 'okx_futures' },
-            { element: legendItems[5], exchange: 'gate_futures' },
-            { element: legendItems[6], exchange: 'paradex_futures' },
-            { element: legendItems[7], exchange: 'binance_spot' },
-            { element: legendItems[8], exchange: 'bybit_spot' }
-        ];
-        
-        exchangeMapping.forEach(({ element, exchange }) => {
-            if (element) {
-                if (this.isExchangeEnabled(exchange)) {
-                    element.classList.remove('disabled');
-                } else {
-                    element.classList.add('disabled');
-                }
-            }
-        });
-    }
 
 }
 
