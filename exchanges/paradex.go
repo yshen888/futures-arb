@@ -2,7 +2,6 @@ package exchanges
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -12,12 +11,10 @@ import (
 )
 
 type ParadexWSRequest struct {
-	ID      int64  `json:"id"`
-	JSONRPC string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  struct {
-		Channel string `json:"channel"`
-	} `json:"params"`
+	ID      int64                  `json:"id"`
+	JSONRPC string                 `json:"jsonrpc"`
+	Method  string                 `json:"method"`
+	Params  map[string]interface{} `json:"params"`
 }
 
 type ParadexWSResponse struct {
@@ -46,7 +43,20 @@ type ParadexTradeEvent struct {
 	} `json:"params"`
 }
 
-func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+type ParadexMarketSummaryEvent struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  struct {
+		Channel string `json:"channel"`
+		Data    struct {
+			Symbol string `json:"symbol"`
+			Bid    string `json:"bid"`
+			Ask    string `json:"ask"`
+		} `json:"data"`
+	} `json:"params"`
+}
+
+func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://ws.api.prod.paradex.trade/v1"
 
 	for {
@@ -59,29 +69,20 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 
 		log.Printf("Connected to Paradex futures WebSocket")
 
-		// Subscribe to trades for each symbol
-		for _, symbol := range symbols {
-			// Convert symbol format (BTCUSDT -> BTC-USD-PERP)
-			paradexSymbol := convertToParadexSymbol(symbol)
-			if paradexSymbol == "" {
-				continue
-			}
+		// Subscribe to markets_summary channel (provides bid/ask for all markets)
+		log.Printf("Subscribing to Paradex markets_summary channel")
 
-			subscribeReq := ParadexWSRequest{
-				ID:      time.Now().UnixMicro(),
-				JSONRPC: "2.0",
-				Method:  "subscribe",
-				Params: struct {
-					Channel string `json:"channel"`
-				}{
-					Channel: fmt.Sprintf("trades.%s", paradexSymbol),
-				},
-			}
+		subscribeReq := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"method":  "subscribe",
+			"params": map[string]interface{}{
+				"channel": "markets_summary",
+			},
+			"id": 1,
+		}
 
-			if err := conn.WriteJSON(subscribeReq); err != nil {
-				log.Printf("Paradex subscription error for %s: %v", paradexSymbol, err)
-				continue
-			}
+		if err := conn.WriteJSON(subscribeReq); err != nil {
+			log.Printf("Paradex markets_summary subscription error: %v", err)
 		}
 
 		// Read messages
@@ -94,58 +95,36 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, tradeCh
 
 			// Try to parse as subscription response first
 			var subResponse ParadexWSResponse
-			if err := json.Unmarshal(message, &subResponse); err == nil && subResponse.Result.Status == "subscribed" {
+			if err := json.Unmarshal(message, &subResponse); err == nil && subResponse.Result.Channel == "markets_summary" {
+				log.Printf("Paradex markets_summary subscription confirmed")
 				continue
 			}
 
-			// Try to parse as trade event
-			var tradeEvent ParadexTradeEvent
-			if err := json.Unmarshal(message, &tradeEvent); err != nil {
-				continue
-			}
-
-			if tradeEvent.Method == "subscription" && strings.HasPrefix(tradeEvent.Params.Channel, "trades.") {
-				// Extract symbol from channel (trades.BTC-USD-PERP -> BTCUSDT)
-				channelParts := strings.Split(tradeEvent.Params.Channel, ".")
-				if len(channelParts) != 2 {
-					continue
-				}
-
-				paradexSymbol := channelParts[1]
-				symbol := convertFromParadexSymbol(paradexSymbol)
+			// Try to parse as market summary event
+			var marketEvent ParadexMarketSummaryEvent
+			if err := json.Unmarshal(message, &marketEvent); err == nil && 
+			   marketEvent.Method == "subscription" && marketEvent.Params.Channel == "markets_summary" {
+				
+				symbol := convertFromParadexSymbol(marketEvent.Params.Data.Symbol)
 				if symbol == "" {
+					continue // Skip unsupported symbols
+				}
+
+				// Parse bid and ask prices
+				bidPrice, err1 := strconv.ParseFloat(marketEvent.Params.Data.Bid, 64)
+				askPrice, err2 := strconv.ParseFloat(marketEvent.Params.Data.Ask, 64)
+				
+				if err1 != nil || err2 != nil {
 					continue
 				}
 
-				trade := tradeEvent.Params.Data
-
-				price, err := strconv.ParseFloat(trade.Price, 64)
-				if err != nil {
-					continue
-				}
-
-				// Convert timestamp from milliseconds to time
-				timestamp := time.UnixMilli(trade.CreatedAt)
-
-				// Normalize side to lowercase
-				side := strings.ToLower(trade.Side)
-
-				// Send price data
-				priceChan <- PriceData{
+				// Send orderbook data
+				orderbookChan <- OrderbookData{
 					Symbol:    symbol,
 					Exchange:  "paradex_futures",
-					Price:     price,
-					Timestamp: timestamp.UnixMilli(),
-				}
-
-				// Send trade data
-				tradeChan <- TradeData{
-					Symbol:    symbol,
-					Exchange:  "paradex_futures",
-					Price:     price,
-					Quantity:  trade.Size,
-					Side:      side,
-					Timestamp: timestamp.UnixMilli(),
+					BestBid:   bidPrice,
+					BestAsk:   askPrice,
+					Timestamp: time.Now().UnixMilli(),
 				}
 			}
 		}

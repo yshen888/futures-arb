@@ -4,8 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Futures Arbitrage Scanner</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uPlot.min.css">
+    <title>Crypto Arbitrage Scanner</title>
     <style>
         * {
             margin: 0;
@@ -447,9 +446,9 @@
 
         .spreads-matrix {
             display: grid;
-            grid-template-columns: 60px repeat(6, 1fr);
+            grid-template-columns: 60px repeat(8, 1fr);
             gap: 2px;
-            font-size: 10px;
+            font-size: 9px;
             font-family: 'JetBrains Mono', monospace;
             width: 100%;
             overflow: hidden;
@@ -553,19 +552,6 @@
             }
         }
 
-        .uplot {
-            background: transparent !important;
-        }
-
-        .u-legend {
-            background: rgba(26, 26, 26, 0.9) !important;
-            border: 1px solid #333 !important;
-            color: #e0e0e0 !important;
-        }
-
-        .u-legend .u-label {
-            color: #e0e0e0 !important;
-        }
 
         .chart-legend {
             position: absolute;
@@ -641,6 +627,16 @@
             background: #ff6b6b;
         }
 
+        .legend-color.binance-spot {
+            background: #f0b90b;
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
+        }
+
+        .legend-color.bybit-spot {
+            background: #f7931a;
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.3) 2px, rgba(0, 0, 0, 0.3) 4px);
+        }
+
         .legend-label {
             color: #ccc;
             font-size: 10px;
@@ -650,6 +646,10 @@
         .legend-value {
             color: #e0e0e0;
             font-weight: bold;
+        }
+
+        .legend-item.disabled {
+            opacity: 0.3;
         }
 
         .scrollbar {
@@ -679,18 +679,12 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">⚡ FUTURES ARBITRAGE SCANNER</div>
+            <div class="logo">⚡ CRYPTO ARBITRAGE SCANNER</div>
             <div class="status">
                 <div class="status-item">
                     <div class="status-dot" id="wsStatus"></div>
                     <span id="wsStatusText">Connecting...</span>
                     <div class="tooltip" id="exchangeTooltip">No exchanges connected</div>
-                </div>
-                <div class="status-item">
-                    <span id="symbolStatus">-</span>
-                </div>
-                <div class="status-item">
-                    <span id="fpsCounter">0 FPS</span>
                 </div>
             </div>
         </div>
@@ -793,6 +787,11 @@
                                 <span class="legend-value" id="hyperliquidValue">--</span>
                             </div>
                             <div class="legend-item">
+                                <span class="legend-color kraken"></span>
+                                <span class="legend-label">Kraken:</span>
+                                <span class="legend-value" id="krakenValue">--</span>
+                            </div>
+                            <div class="legend-item">
                                 <span class="legend-color okx"></span>
                                 <span class="legend-label">OKX:</span>
                                 <span class="legend-value" id="okxValue">--</span>
@@ -807,6 +806,16 @@
                                 <span class="legend-label">Paradex:</span>
                                 <span class="legend-value" id="paradexValue">--</span>
                             </div>
+                            <div class="legend-item">
+                                <span class="legend-color binance-spot"></span>
+                                <span class="legend-label">Binance Spot:</span>
+                                <span class="legend-value" id="binanceSpotValue">--</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color bybit-spot"></span>
+                                <span class="legend-label">Bybit Spot:</span>
+                                <span class="legend-value" id="bybitSpotValue">--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -816,7 +825,7 @@
     </div>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uPlot.iife.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
     <script src="app.js"></script>
 </body>
 

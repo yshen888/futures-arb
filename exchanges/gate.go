@@ -34,11 +34,43 @@ type GateWebSocketMessage struct {
 	} `json:"error,omitempty"`
 }
 
+type GateBookTickerResult struct {
+	Symbol   string `json:"s"`            // Contract symbol
+	BestBid  string `json:"b"`            // Best bid price
+	BestBidSize int64 `json:"B"`          // Best bid size
+	BestAsk  string `json:"a"`            // Best ask price 
+	BestAskSize int64 `json:"A"`          // Best ask size
+	Timestamp int64 `json:"t"`            // Timestamp in milliseconds
+}
+
+type GateBookTickerMessage struct {
+	Time    int64                 `json:"time"`
+	Channel string                `json:"channel"`
+	Event   string                `json:"event"`
+	Result  GateBookTickerResult  `json:"result"`
+}
+
 type GateTradeMessage struct {
 	Time    int64               `json:"time"`
 	Channel string              `json:"channel"`
 	Event   string              `json:"event"`
 	Result  []GateFuturesTrade  `json:"result"`
+}
+
+type GateFuturesOrderbook struct {
+	Contract       string     `json:"contract"`
+	Ask            [][]string `json:"asks"`
+	Bid            [][]string `json:"bids"`
+	UpdateTime     int64      `json:"update_time"`
+	UpdateTimeMs   int64      `json:"update_time_ms"`
+	UpdateID       int64      `json:"update_id"`
+}
+
+type GateOrderbookMessage struct {
+	Time    int64                   `json:"time"`
+	Channel string                  `json:"channel"`
+	Event   string                  `json:"event"`
+	Result  []GateFuturesOrderbook `json:"result"`
 }
 
 type GateSubscribeMessage struct {
@@ -48,7 +80,7 @@ type GateSubscribeMessage struct {
 	Payload []string `json:"payload"`
 }
 
-func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan chan<- TradeData) {
+func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, orderbookChan chan<- OrderbookData, tradeChan chan<- TradeData) {
 	wsURL := "wss://fx-ws.gateio.ws/v4/ws/usdt"
 
 	for {
@@ -67,21 +99,22 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan 
 			gateSymbols[i] = convertToGateSymbol(symbol)
 		}
 		
-		// Subscribe to trades for all symbols in one message
-		subscribeMsg := GateSubscribeMessage{
+		// Subscribe to book ticker for all symbols - this provides best bid/ask
+		bookTickerSubscribeMsg := GateSubscribeMessage{
 			Time:    time.Now().Unix(),
-			Channel: "futures.trades",
+			Channel: "futures.book_ticker",
 			Event:   "subscribe",
 			Payload: gateSymbols,
 		}
 
-		err = conn.WriteJSON(subscribeMsg)
+		err = conn.WriteJSON(bookTickerSubscribeMsg)
 		if err != nil {
-			log.Printf("Gate.io subscription error: %v", err)
+			log.Printf("Gate.io book ticker subscription error: %v", err)
 			conn.Close()
 			time.Sleep(5 * time.Second)
 			continue
 		}
+
 
 		if err != nil {
 			continue
@@ -111,63 +144,46 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, tradeChan 
 				}
 			}
 
-			// Try to parse as trade message
-			var tradeMsg GateTradeMessage
-			if err := json.Unmarshal(message, &tradeMsg); err == nil &&
-			   tradeMsg.Channel == "futures.trades" &&
-			   tradeMsg.Event == "update" &&
-			   len(tradeMsg.Result) > 0 {
+			// Try to parse as book ticker message
+			var bookTickerMsg GateBookTickerMessage
+			if err := json.Unmarshal(message, &bookTickerMsg); err == nil &&
+			   bookTickerMsg.Channel == "futures.book_ticker" &&
+			   bookTickerMsg.Event == "update" {
 				
-				for _, trade := range tradeMsg.Result {
-					price, err := strconv.ParseFloat(trade.Price, 64)
-					if err != nil {
-						continue
-					}
-
-					// Convert Gate.io symbol back to standard format
-					standardSymbol := convertFromGateSymbol(trade.Contract)
-
-					// Use create_time_ms if available, otherwise create_time * 1000
-					var timestamp int64
-					if trade.CreateTimeMs > 0 {
-						timestamp = trade.CreateTimeMs
-					} else if trade.CreateTime > 0 {
-						timestamp = trade.CreateTime * 1000
-					} else {
-						timestamp = time.Now().UnixMilli()
-					}
-
-					// Determine side from size (positive = buy, negative = sell)
-					var side string
-					var quantity string
-					if trade.Size > 0 {
-						side = "buy"
-						quantity = fmt.Sprintf("%d", trade.Size)
-					} else {
-						side = "sell"
-						quantity = fmt.Sprintf("%d", -trade.Size) // Make quantity positive
-					}
-
-					priceData := PriceData{
-						Symbol:    standardSymbol,
-						Exchange:  "gate_futures",
-						Price:     price,
-						Timestamp: timestamp,
-					}
-
-					tradeData := TradeData{
-						Symbol:    standardSymbol,
-						Exchange:  "gate_futures",
-						Price:     price,
-						Quantity:  quantity,
-						Side:      side,
-						Timestamp: timestamp,
-					}
-
-					priceChan <- priceData
-					tradeChan <- tradeData
+				// Parse best bid and ask
+				bestBid, err1 := strconv.ParseFloat(bookTickerMsg.Result.BestBid, 64)
+				bestAsk, err2 := strconv.ParseFloat(bookTickerMsg.Result.BestAsk, 64)
+				if err1 != nil || err2 != nil {
+					log.Printf("Gate.io: Error parsing prices - bid: %v, ask: %v", err1, err2)
+					continue
 				}
+
+				// Convert Gate.io symbol back to standard format
+				standardSymbol := convertFromGateSymbol(bookTickerMsg.Result.Symbol)
+
+				// Use timestamp from message
+				var timestamp int64
+				if bookTickerMsg.Result.Timestamp > 0 {
+					timestamp = bookTickerMsg.Result.Timestamp
+				} else {
+					timestamp = time.Now().UnixMilli()
+				}
+
+
+
+				orderbookData := OrderbookData{
+					Symbol:    standardSymbol,
+					Exchange:  "gate_futures",
+					BestBid:   bestBid,
+					BestAsk:   bestAsk,
+					Timestamp: timestamp,
+				}
+
+				orderbookChan <- orderbookData
+				continue
 			}
+
+			// Silently ignore unhandled message types
 		}
 
 		time.Sleep(2 * time.Second)

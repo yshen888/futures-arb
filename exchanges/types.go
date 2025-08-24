@@ -7,6 +7,14 @@ type PriceData struct {
 	Timestamp int64
 }
 
+type OrderbookData struct {
+	Symbol    string
+	Exchange  string
+	BestBid   float64
+	BestAsk   float64
+	Timestamp int64
+}
+
 type TradeData struct {
 	Symbol    string
 	Exchange  string
