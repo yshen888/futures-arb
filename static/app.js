@@ -20,12 +20,6 @@ class FuturesArbitrageScanner {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         
-        this.fps = 0;
-        this.frameCount = 0;
-        this.lastTime = performance.now();
-        this.chartUpdatePending = false;
-        this.lastChartUpdate = 0;
-        this.chartUpdateThrottle = 100; // ms
         
         this.init();
     }
@@ -98,8 +92,6 @@ class FuturesArbitrageScanner {
         this.setupEventListeners();
         this.setupChart();
         this.connectWebSocket();
-        this.startFPSCounter();
-        this.startRenderLoop();
         this.setupOpportunitiesTable();
     }
 
@@ -401,18 +393,6 @@ class FuturesArbitrageScanner {
     }
 
     updateChart() {
-        const now = performance.now();
-        if (now - this.lastChartUpdate < this.chartUpdateThrottle) {
-            if (!this.chartUpdatePending) {
-                this.chartUpdatePending = true;
-                setTimeout(() => {
-                    this.chartUpdatePending = false;
-                    this.performChartUpdate();
-                }, this.chartUpdateThrottle - (now - this.lastChartUpdate));
-            }
-            return;
-        }
-        
         this.performChartUpdate();
     }
 
@@ -445,7 +425,6 @@ class FuturesArbitrageScanner {
             }
         });
 
-        this.lastChartUpdate = performance.now();
     }
 
     setupOpportunitiesTable() {
@@ -777,29 +756,6 @@ class FuturesArbitrageScanner {
         });
     }
 
-    startFPSCounter() {
-        const fpsCounter = document.getElementById('fpsCounter');
-        
-        setInterval(() => {
-            fpsCounter.textContent = `${this.fps} FPS`;
-        }, 1000);
-    }
-
-    startRenderLoop() {
-        const animate = (currentTime) => {
-            this.frameCount++;
-            
-            if (currentTime - this.lastTime >= 1000) {
-                this.fps = Math.round((this.frameCount * 1000) / (currentTime - this.lastTime));
-                this.frameCount = 0;
-                this.lastTime = currentTime;
-            }
-            
-            requestAnimationFrame(animate);
-        };
-        
-        requestAnimationFrame(animate);
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
