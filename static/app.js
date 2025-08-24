@@ -173,6 +173,7 @@ class FuturesArbitrageScanner {
                     stroke: "#f0b90b",
                     width: 2,
                     spanGaps: false,
+                    dash: [],
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
                 },
                 {
@@ -180,6 +181,7 @@ class FuturesArbitrageScanner {
                     stroke: "#f7931a",
                     width: 2,
                     spanGaps: false,
+                    dash: [],
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
                 },
                 {
@@ -219,16 +221,18 @@ class FuturesArbitrageScanner {
                 },
                 {
                     label: "Binance Spot",
-                    stroke: "#ffb347",
+                    stroke: "#f0b90b",
                     width: 2,
                     spanGaps: false,
+                    dash: [5, 5],
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
                 },
                 {
                     label: "Bybit Spot",
-                    stroke: "#dda0dd",
+                    stroke: "#f7931a",
                     width: 2,
                     spanGaps: false,
+                    dash: [5, 5],
                     value: (_, v) => v == null ? '' : '$' + this.formatPrice(v),
                 },
             ],
@@ -658,7 +662,7 @@ class FuturesArbitrageScanner {
 
         // Generate table rows
         let html = '';
-        sortedOpportunities.forEach((opp, index) => {
+        sortedOpportunities.forEach((opp) => {
             const isRecent = Date.now() - opp.timestamp < 5000; // Fresh for 5 seconds
             const profitClass = this.getProfitClass(opp.profit_pct);
             const timeStr = this.formatTime(opp.timestamp);
