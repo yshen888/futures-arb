@@ -70,7 +70,6 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbo
 		log.Printf("Connected to Paradex futures WebSocket")
 
 		// Subscribe to markets_summary channel (provides bid/ask for all markets)
-		log.Printf("Subscribing to Paradex markets_summary channel")
 
 		subscribeReq := map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -82,7 +81,6 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbo
 		}
 
 		if err := conn.WriteJSON(subscribeReq); err != nil {
-			log.Printf("Paradex markets_summary subscription error: %v", err)
 		}
 
 		// Read messages
@@ -96,7 +94,6 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbo
 			// Try to parse as subscription response first
 			var subResponse ParadexWSResponse
 			if err := json.Unmarshal(message, &subResponse); err == nil && subResponse.Result.Channel == "markets_summary" {
-				log.Printf("Paradex markets_summary subscription confirmed")
 				continue
 			}
 
@@ -121,7 +118,7 @@ func ConnectParadexFutures(symbols []string, priceChan chan<- PriceData, orderbo
 				// Send orderbook data
 				orderbookChan <- OrderbookData{
 					Symbol:    symbol,
-					Exchange:  "paradex_futures",
+					Source:    "paradex_futures",
 					BestBid:   bidPrice,
 					BestAsk:   askPrice,
 					Timestamp: time.Now().UnixMilli(),

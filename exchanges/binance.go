@@ -79,7 +79,7 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, orderbo
 
 				orderbookData := OrderbookData{
 					Symbol:    bookTicker.Symbol,
-					Exchange:  "binance_futures",
+					Source:    "binance_futures",
 					BestBid:   bidPrice,
 					BestAsk:   askPrice,
 					Timestamp: bookTicker.EventTime,
@@ -108,7 +108,7 @@ func ConnectBinanceFutures(symbols []string, priceChan chan<- PriceData, orderbo
 
 				tradeData := TradeData{
 					Symbol:    trade.Symbol,
-					Exchange:  "binance_futures",
+					Source:    "binance_futures",
 					Price:     price,
 					Quantity:  trade.Quantity,
 					Side:      side,
@@ -193,7 +193,7 @@ func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, orderbookC
 
 				orderbookData := OrderbookData{
 					Symbol:    bookTicker.Symbol,
-					Exchange:  "binance_spot",
+					Source:    "binance_spot",
 					BestBid:   bidPrice,
 					BestAsk:   askPrice,
 					Timestamp: bookTicker.EventTime,
@@ -222,7 +222,7 @@ func ConnectBinanceSpot(symbols []string, priceChan chan<- PriceData, orderbookC
 
 				tradeData := TradeData{
 					Symbol:    trade.Symbol,
-					Exchange:  "binance_spot",
+					Source:    "binance_spot",
 					Price:     price,
 					Quantity:  trade.Quantity,
 					Side:      side,

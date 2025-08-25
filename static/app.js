@@ -1,28 +1,28 @@
 class FuturesArbitrageScanner {
     constructor() {
         this.currentSymbol = 'BTCUSDT';
-        this.exchanges = new Map();
+        this.sources = new Map();
         this.priceHistory = new Map();
         this.arbitrageOpportunities = [];
         this.currentSpreads = new Map();
         this.maxHistoryPoints = 500; // Reduced from 1000
         this.maxOpportunities = 25; // Reduced from 50
-        this.connectedExchanges = new Set();
+        this.connectedSources = new Set();
         this.currentSort = { field: 'timestamp', direction: 'desc' };
         this.minProfitFilter = 0.05;
         
-        // Exchange visibility settings with localStorage persistence
-        this.enabledExchanges = this.loadEnabledExchanges();
+        // Source visibility settings with localStorage persistence
+        this.enabledSources = this.loadEnabledSources();
         
         this.chart = null;
-        this.chartSeries = new Map(); // Map to store series for each exchange
+        this.chartSeries = new Map(); // Map to store series for each source
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         
         // Performance optimization: throttling
         this.chartUpdatePending = false;
-        this.exchangeUpdatePending = false;
+        this.sourceUpdatePending = false;
         this.opportunitiesUpdatePending = false;
         this.spreadsUpdatePending = false;
         
@@ -37,9 +37,9 @@ class FuturesArbitrageScanner {
         this.init();
     }
 
-    // Load enabled exchanges from localStorage
-    loadEnabledExchanges() {
-        const defaultExchanges = {
+    // Load enabled sources from localStorage
+    loadEnabledSources() {
+        const defaultSources = {
             'binance_futures': true,
             'bybit_futures': true,
             'hyperliquid_futures': true,
@@ -48,59 +48,60 @@ class FuturesArbitrageScanner {
             'gate_futures': true,
             'paradex_futures': true,
             'binance_spot': true,
-            'bybit_spot': true
+            'bybit_spot': true,
+            'pyth': true
         };
         
         try {
-            const stored = localStorage.getItem('enabledExchanges');
-            return stored ? { ...defaultExchanges, ...JSON.parse(stored) } : defaultExchanges;
+            const stored = localStorage.getItem('enabledSources');
+            return stored ? { ...defaultSources, ...JSON.parse(stored) } : defaultSources;
         } catch (error) {
-            console.warn('Failed to load enabled exchanges from localStorage:', error);
-            return defaultExchanges;
+            console.warn('Failed to load enabled sources from localStorage:', error);
+            return defaultSources;
         }
     }
     
-    // Save enabled exchanges to localStorage
-    saveEnabledExchanges() {
+    // Save enabled sources to localStorage
+    saveEnabledSources() {
         try {
-            localStorage.setItem('enabledExchanges', JSON.stringify(this.enabledExchanges));
+            localStorage.setItem('enabledSources', JSON.stringify(this.enabledSources));
         } catch (error) {
-            console.warn('Failed to save enabled exchanges to localStorage:', error);
+            console.warn('Failed to save enabled sources to localStorage:', error);
         }
     }
     
-    // Toggle exchange visibility (now mainly used by non-UI code)
-    toggleExchange(exchange) {
-        const oldState = this.enabledExchanges[exchange];
-        this.enabledExchanges[exchange] = !this.enabledExchanges[exchange];
-        const newState = this.enabledExchanges[exchange];
-        console.log(`Toggle ${exchange}: ${oldState} -> ${newState}`);
+    // Toggle source visibility (now mainly used by non-UI code)
+    toggleSource(source) {
+        const oldState = this.enabledSources[source];
+        this.enabledSources[source] = !this.enabledSources[source];
+        const newState = this.enabledSources[source];
+        console.log(`Toggle ${source}: ${oldState} -> ${newState}`);
         
-        this.saveEnabledExchanges();
+        this.saveEnabledSources();
         
         // Update all components immediately
-        this.updateExchangeList();
+        this.updateSourceList();
         this.performChartUpdate(); // Force immediate chart update, bypassing throttling
         this.updateSpreadsMatrix();
         this.updateOpportunitiesTable();
     }
     
-    // Update exchange item opacity without full HTML recreation
-    updateExchangeVisibility() {
-        const exchangeItems = document.querySelectorAll('.exchange-item');
-        exchangeItems.forEach(item => {
+    // Update source item opacity without full HTML recreation
+    updateSourceVisibility() {
+        const sourceItems = document.querySelectorAll('.source-item');
+        sourceItems.forEach(item => {
             const checkbox = item.querySelector('input[type="checkbox"]');
-            if (checkbox && checkbox.dataset.exchange) {
-                const exchange = checkbox.dataset.exchange;
-                const isEnabled = this.isExchangeEnabled(exchange);
+            if (checkbox && checkbox.dataset.source) {
+                const source = checkbox.dataset.source;
+                const isEnabled = this.isSourceEnabled(source);
                 item.style.opacity = isEnabled ? '1' : '0.4';
             }
         });
     }
     
-    // Check if exchange is enabled
-    isExchangeEnabled(exchange) {
-        return this.enabledExchanges[exchange] !== false;
+    // Check if source is enabled
+    isSourceEnabled(source) {
+        return this.enabledSources[source] !== false;
     }
 
     // Smart price formatting based on price value
@@ -120,7 +121,7 @@ class FuturesArbitrageScanner {
 
     init() {
         this.setupEventListeners();
-        this.setupExchangeCheckboxDelegation();
+        this.setupSourceCheckboxDelegation();
         this.setupChart();
         this.connectWebSocket();
         this.setupOpportunitiesTable();
@@ -166,29 +167,29 @@ class FuturesArbitrageScanner {
         });
     }
     
-    setupExchangeCheckboxDelegation() {
-        const exchangeList = document.getElementById('exchangeList');
+    setupSourceCheckboxDelegation() {
+        const sourceList = document.getElementById('sourceList');
         
-        exchangeList.addEventListener('click', (event) => {
-            if (event.target.type === 'checkbox' && event.target.dataset.exchange) {
-                const exchange = event.target.dataset.exchange;
-                console.log(`Checkbox click event for exchange: ${exchange}`);
+        sourceList.addEventListener('click', (event) => {
+            if (event.target.type === 'checkbox' && event.target.dataset.source) {
+                const source = event.target.dataset.source;
+                console.log(`Checkbox click event for source: ${source}`);
                 
                 // Toggle state immediately without HTML recreation
-                this.enabledExchanges[exchange] = !this.enabledExchanges[exchange];
-                console.log(`Toggle ${exchange}: -> ${this.enabledExchanges[exchange]}`);
+                this.enabledSources[source] = !this.enabledSources[source];
+                console.log(`Toggle ${source}: -> ${this.enabledSources[source]}`);
                 
                 // Update checkbox state immediately
-                event.target.checked = this.enabledExchanges[exchange];
+                event.target.checked = this.enabledSources[source];
                 
                 // Save and update other components
-                this.saveEnabledExchanges();
+                this.saveEnabledSources();
                 this.performChartUpdate();
                 this.updateSpreadsMatrix();
                 this.updateOpportunitiesTable();
                 
-                // Update exchange list opacity without full recreation
-                this.updateExchangeVisibility();
+                // Update source list opacity without full recreation
+                this.updateSourceVisibility();
             }
         });
     }
@@ -235,8 +236,8 @@ class FuturesArbitrageScanner {
             },
         });
 
-        // Define exchange configurations
-        const exchangeConfigs = [
+        // Define source configurations
+        const sourceConfigs = [
             { key: 'binance_futures', label: 'Binance Futures', color: '#f0b90b', lineStyle: LightweightCharts.LineStyle.Solid },
             { key: 'bybit_futures', label: 'Bybit Futures', color: '#f7931a', lineStyle: LightweightCharts.LineStyle.Solid },
             { key: 'hyperliquid_futures', label: 'Hyperliquid Futures', color: '#97FCE4', lineStyle: LightweightCharts.LineStyle.Solid },
@@ -246,10 +247,11 @@ class FuturesArbitrageScanner {
             { key: 'paradex_futures', label: 'Paradex Futures', color: '#ff6b6b', lineStyle: LightweightCharts.LineStyle.Solid },
             { key: 'binance_spot', label: 'Binance Spot', color: '#f0b90b', lineStyle: LightweightCharts.LineStyle.Dashed },
             { key: 'bybit_spot', label: 'Bybit Spot', color: '#f7931a', lineStyle: LightweightCharts.LineStyle.Dashed },
+            { key: 'pyth', label: 'Pyth Oracle', color: '#00ff88', lineStyle: LightweightCharts.LineStyle.Dotted },
         ];
 
-        // Create line series for each exchange
-        exchangeConfigs.forEach(config => {
+        // Create line series for each source
+        sourceConfigs.forEach(config => {
             const series = this.chart.addLineSeries({
                 color: config.color,
                 lineWidth: 2,
@@ -404,15 +406,15 @@ class FuturesArbitrageScanner {
         this.processingMessages = false;
         
         // Schedule UI updates
-        this.updateExchangeList();
+        this.updateSourceList();
         this.updateChart();
     }
     
     handleBatchedPriceUpdates(priceUpdates) {
         priceUpdates.forEach(data => {
             if (data.symbol === this.currentSymbol) {
-                this.updateExchangePrice(data.exchange, data.price);
-                this.addPriceToHistory(data.exchange, data.price, data.timestamp);
+                this.updateSourcePrice(data.source, data.price);
+                this.addPriceToHistory(data.source, data.price, data.timestamp);
             }
         });
     }
@@ -430,11 +432,11 @@ class FuturesArbitrageScanner {
     }
 
     updatePrices(prices) {
-        for (const [symbol, exchangePrices] of Object.entries(prices)) {
+        for (const [symbol, sourcePrices] of Object.entries(prices)) {
             if (symbol === this.currentSymbol) {
-                for (const [exchange, price] of Object.entries(exchangePrices)) {
-                    this.updateExchangePrice(exchange, price);
-                    this.addPriceToHistory(exchange, price);
+                for (const [source, price] of Object.entries(sourcePrices)) {
+                    this.updateSourcePrice(source, price);
+                    this.addPriceToHistory(source, price);
                 }
                 // UI updates will be handled by processMessageQueue
                 break;
@@ -444,20 +446,20 @@ class FuturesArbitrageScanner {
 
     handlePriceUpdate(data) {
         if (data.symbol === this.currentSymbol) {
-            this.updateExchangePrice(data.exchange, data.price);
-            this.addPriceToHistory(data.exchange, data.price, data.timestamp);
+            this.updateSourcePrice(data.source, data.price);
+            this.addPriceToHistory(data.source, data.price, data.timestamp);
             // UI updates will be handled by processMessageQueue
         }
     }
 
-    addPriceToHistory(exchange, price, timestamp = null) {
+    addPriceToHistory(source, price, timestamp = null) {
         const ts = timestamp ? timestamp / 1000 : Date.now() / 1000;
         
-        if (!this.priceHistory.has(exchange)) {
-            this.priceHistory.set(exchange, []);
+        if (!this.priceHistory.has(source)) {
+            this.priceHistory.set(source, []);
         }
 
-        const history = this.priceHistory.get(exchange);
+        const history = this.priceHistory.get(source);
         const newDataPoint = [ts, price];
         history.push(newDataPoint);
 
@@ -465,9 +467,9 @@ class FuturesArbitrageScanner {
             history.shift();
         }
 
-        // If exchange is enabled, immediately update the chart series with the new data point
-        if (this.isExchangeEnabled(exchange)) {
-            const series = this.chartSeries.get(exchange);
+        // If source is enabled, immediately update the chart series with the new data point
+        if (this.isSourceEnabled(source)) {
+            const series = this.chartSeries.get(source);
             if (series) {
                 const chartDataPoint = {
                     time: ts,
@@ -483,12 +485,12 @@ class FuturesArbitrageScanner {
         }
     }
 
-    updateExchangePrice(exchange, price) {
-        const previousPrice = this.exchanges.get(exchange)?.price || price;
+    updateSourcePrice(source, price) {
+        const previousPrice = this.sources.get(source)?.price || price;
         const change = price - previousPrice;
         const changePercent = previousPrice !== 0 ? (change / previousPrice) * 100 : 0;
 
-        this.exchanges.set(exchange, {
+        this.sources.set(source, {
             price: price,
             previousPrice: previousPrice,
             change: change,
@@ -496,43 +498,43 @@ class FuturesArbitrageScanner {
             lastUpdate: Date.now()
         });
 
-        this.connectedExchanges.add(exchange);
+        this.connectedSources.add(source);
     }
 
-    updateExchangeList() {
-        if (!this.exchangeUpdatePending) {
-            this.exchangeUpdatePending = true;
+    updateSourceList() {
+        if (!this.sourceUpdatePending) {
+            this.sourceUpdatePending = true;
             setTimeout(() => {
-                this.performExchangeListUpdate();
-                this.exchangeUpdatePending = false;
+                this.performSourceListUpdate();
+                this.sourceUpdatePending = false;
             }, 100);
         }
     }
     
-    performExchangeListUpdate() {
-        const exchangeList = document.getElementById('exchangeList');
+    performSourceListUpdate() {
+        const sourceList = document.getElementById('sourceList');
         
-        if (this.exchanges.size === 0) {
-            exchangeList.innerHTML = '<div class="loading">No data available</div>';
+        if (this.sources.size === 0) {
+            sourceList.innerHTML = '<div class="loading">No data available</div>';
             return;
         }
 
         // Check if we need to recreate HTML (structure changed) or just update prices
-        const existingItems = exchangeList.querySelectorAll('.exchange-item');
-        const needsRecreation = existingItems.length !== this.exchanges.size;
+        const existingItems = sourceList.querySelectorAll('.source-item');
+        const needsRecreation = existingItems.length !== this.sources.size;
         
         if (needsRecreation) {
-            console.log('Recreating exchange list HTML');
-            this.recreateExchangeList();
+            console.log('Recreating source list HTML');
+            this.recreateSourceList();
         } else {
             // Just update prices and visual states without recreating HTML
-            this.updateExchangePrices();
+            this.updateSourcePrices();
         }
     }
     
-    recreateExchangeList() {
-        const exchangeList = document.getElementById('exchangeList');
-        const exchangeColors = {
+    recreateSourceList() {
+        const sourceList = document.getElementById('sourceList');
+        const sourceColors = {
             'binance_futures': '#f0b90b',
             'bybit_futures': '#f7931a',
             'hyperliquid_futures': '#97FCE4',
@@ -542,27 +544,28 @@ class FuturesArbitrageScanner {
             'paradex_futures': '#ff6b6b',
             'binance_spot': '#ffb347',
             'bybit_spot': '#f7931a',
+            'pyth': '#00ff88',
         };
 
         let html = '';
-        for (const [exchange, data] of this.exchanges.entries()) {
+        for (const [source, data] of this.sources.entries()) {
             const changeClass = data.change >= 0 ? 'up' : 'down';
             const changeSymbol = data.change >= 0 ? '↑' : '↓';
-            const color = exchangeColors[exchange] || '#888';
-            const isEnabled = this.isExchangeEnabled(exchange);
+            const color = sourceColors[source] || '#888';
+            const isEnabled = this.isSourceEnabled(source);
             const opacity = isEnabled ? '1' : '0.4';
             
             html += `
-                <div class="exchange-item" data-exchange="${exchange}" style="opacity: ${opacity};">
+                <div class="source-item" data-source="${source}" style="opacity: ${opacity};">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" id="checkbox-${exchange}" ${isEnabled ? 'checked' : ''}
-                               data-exchange="${exchange}"
+                        <input type="checkbox" id="checkbox-${source}" ${isEnabled ? 'checked' : ''}
+                               data-source="${source}"
                                style="margin-right: 4px; cursor: pointer;">
-                        <div class="exchange-color-dot" style="background: ${color};"></div>
-                        <div class="exchange-name">${exchange.replace('_', ' ')}</div>
+                        <div class="source-color-dot" style="background: ${color};"></div>
+                        <div class="source-name">${source.replace('_', ' ')}</div>
                     </div>
                     <div>
-                        <span class="exchange-price">$${this.formatPrice(data.price)}</span>
+                        <span class="source-price">$${this.formatPrice(data.price)}</span>
                         <span class="price-change ${changeClass}">
                             ${changeSymbol} ${Math.abs(data.changePercent).toFixed(3)}%
                         </span>
@@ -571,15 +574,15 @@ class FuturesArbitrageScanner {
             `;
         }
         
-        exchangeList.innerHTML = html;
+        sourceList.innerHTML = html;
     }
     
-    updateExchangePrices() {
-        for (const [exchange, data] of this.exchanges.entries()) {
-            const exchangeItem = document.querySelector(`[data-exchange="${exchange}"]`);
-            if (exchangeItem) {
-                const priceElement = exchangeItem.querySelector('.exchange-price');
-                const changeElement = exchangeItem.querySelector('.price-change');
+    updateSourcePrices() {
+        for (const [source, data] of this.sources.entries()) {
+            const sourceItem = document.querySelector(`[data-source="${source}"]`);
+            if (sourceItem) {
+                const priceElement = sourceItem.querySelector('.source-price');
+                const changeElement = sourceItem.querySelector('.price-change');
                 
                 if (priceElement) {
                     priceElement.textContent = `$${this.formatPrice(data.price)}`;
@@ -608,14 +611,14 @@ class FuturesArbitrageScanner {
     performChartUpdate() {
         if (!this.chart || this.priceHistory.size === 0) return;
 
-        const exchangeNames = ['binance_futures', 'bybit_futures', 'hyperliquid_futures', 'kraken_futures', 'okx_futures', 'gate_futures', 'paradex_futures', 'binance_spot', 'bybit_spot'];
+        const sourceNames = ['binance_futures', 'bybit_futures', 'hyperliquid_futures', 'kraken_futures', 'okx_futures', 'gate_futures', 'paradex_futures', 'binance_spot', 'bybit_spot', 'pyth'];
         
-        exchangeNames.forEach(exchange => {
-            const series = this.chartSeries.get(exchange);
+        sourceNames.forEach(source => {
+            const series = this.chartSeries.get(source);
             if (!series) return;
 
-            if (this.isExchangeEnabled(exchange)) {
-                const history = this.priceHistory.get(exchange) || [];
+            if (this.isSourceEnabled(source)) {
+                const history = this.priceHistory.get(source) || [];
                 if (history.length > 0) {
                     // Convert data to TradingView format: { time: timestamp, value: price }
                     const seriesData = history.map(([timestamp, price]) => ({
@@ -629,7 +632,7 @@ class FuturesArbitrageScanner {
                     series.setData([]);
                 }
             } else {
-                // Clear data for disabled exchanges
+                // Clear data for disabled sources
                 series.setData([]);
             }
         });
@@ -695,11 +698,11 @@ class FuturesArbitrageScanner {
         const tbody = document.getElementById('opportunitiesTableBody');
         const stats = document.getElementById('opportunitiesStats');
         
-        // Filter opportunities by profit and enabled exchanges
+        // Filter opportunities by profit and enabled sources
         const filteredOpportunities = this.arbitrageOpportunities.filter(opp =>
             opp.profit_pct >= this.minProfitFilter &&
-            this.isExchangeEnabled(opp.buy_exchange) &&
-            this.isExchangeEnabled(opp.sell_exchange)
+            this.isSourceEnabled(opp.buy_source) &&
+            this.isSourceEnabled(opp.sell_source)
         );
 
         // Sort opportunities
@@ -742,9 +745,9 @@ class FuturesArbitrageScanner {
                 <tr class="${isRecent ? 'fresh' : ''}" data-id="${opp.id}">
                     <td class="symbol-cell">${opp.symbol}</td>
                     <td class="profit-cell ${profitClass}">${opp.profit_pct.toFixed(3)}%</td>
-                    <td class="exchange-cell">${this.formatExchangeName(opp.buy_exchange)}</td>
+                    <td class="source-cell">${this.formatSourceName(opp.buy_source)}</td>
                     <td class="price-cell">$${this.formatPrice(opp.buy_price)}</td>
-                    <td class="exchange-cell">${this.formatExchangeName(opp.sell_exchange)}</td>
+                    <td class="source-cell">${this.formatSourceName(opp.sell_source)}</td>
                     <td class="price-cell">$${this.formatPrice(opp.sell_price)}</td>
                     <td class="time-cell">${timeStr}</td>
                 </tr>
@@ -760,8 +763,11 @@ class FuturesArbitrageScanner {
         return 'low';
     }
 
-    formatExchangeName(exchange) {
-        return exchange.replace('_futures', '').replace('_', ' ').toUpperCase();
+    formatSourceName(source) {
+        if (source === 'pyth') {
+            return 'PYTH';
+        }
+        return source.replace('_futures', '').replace('_', ' ').toUpperCase();
     }
 
     handleSpreadsUpdate(data) {
@@ -794,42 +800,42 @@ class FuturesArbitrageScanner {
             return;
         }
 
-        // Get only enabled exchanges
-        const allExchanges = Object.keys(spreadData.spreads);
-        const exchanges = allExchanges.filter(exchange => this.isExchangeEnabled(exchange));
+        // Get only enabled sources
+        const allSources = Object.keys(spreadData.spreads);
+        const sources = allSources.filter(source => this.isSourceEnabled(source));
         
-        if (exchanges.length === 0) {
-            matrixContainer.innerHTML = '<div class="loading">No enabled exchanges with data</div>';
+        if (sources.length === 0) {
+            matrixContainer.innerHTML = '<div class="loading">No enabled sources with data</div>';
             return;
         }
 
-        // Set dynamic grid columns: 1 for row headers + number of exchanges for data
-        matrixContainer.style.gridTemplateColumns = `60px repeat(${exchanges.length}, 1fr)`;
+        // Set dynamic grid columns: 1 for row headers + number of sources for data
+        matrixContainer.style.gridTemplateColumns = `60px repeat(${sources.length}, 1fr)`;
         
         // Create matrix HTML
         let html = '';
         
         // Header row
         html += '<div class="spread-header"></div>'; // Empty corner
-        exchanges.forEach(sellExchange => {
-            const shortName = this.getShortExchangeName(sellExchange);
+        sources.forEach(sellSource => {
+            const shortName = this.getShortSourceName(sellSource);
             html += `<div class="spread-header">${shortName}</div>`;
         });
 
         // Data rows
-        exchanges.forEach(buyExchange => {
-            const shortBuyName = this.getShortExchangeName(buyExchange);
+        sources.forEach(buySource => {
+            const shortBuyName = this.getShortSourceName(buySource);
             html += `<div class="spread-row-header">${shortBuyName}</div>`;
             
-            exchanges.forEach(sellExchange => {
-                if (buyExchange === sellExchange) {
+            sources.forEach(sellSource => {
+                if (buySource === sellSource) {
                     html += '<div class="spread-cell neutral">-</div>';
                 } else {
-                    const spread = spreadData.spreads[buyExchange] && spreadData.spreads[buyExchange][sellExchange];
+                    const spread = spreadData.spreads[buySource] && spreadData.spreads[buySource][sellSource];
                     if (spread !== undefined) {
                         const spreadClass = this.getSpreadClass(spread);
                         const displaySpread = spread >= 0 ? `+${spread.toFixed(2)}%` : `${spread.toFixed(2)}%`;
-                        html += `<div class="spread-cell ${spreadClass}" title="Buy ${this.formatExchangeName(buyExchange)} → Sell ${this.formatExchangeName(sellExchange)}: ${displaySpread}">${displaySpread}</div>`;
+                        html += `<div class="spread-cell ${spreadClass}" title="Buy ${this.formatSourceName(buySource)} → Sell ${this.formatSourceName(sellSource)}: ${displaySpread}">${displaySpread}</div>`;
                     } else {
                         html += '<div class="spread-cell neutral">-</div>';
                     }
@@ -840,7 +846,7 @@ class FuturesArbitrageScanner {
         matrixContainer.innerHTML = html;
     }
 
-    getShortExchangeName(exchange) {
+    getShortSourceName(source) {
         const names = {
             'binance_futures': 'BIN-F',
             'bybit_futures': 'BYB-F',
@@ -850,9 +856,10 @@ class FuturesArbitrageScanner {
             'gate_futures': 'GAT-F',
             'paradex_futures': 'PDX',
             'binance_spot': 'BIN-S',
-            'bybit_spot': 'BYB-S'
+            'bybit_spot': 'BYB-S',
+            'pyth': 'PYTH'
         };
-        return names[exchange] || exchange.substring(0, 3).toUpperCase();
+        return names[source] || source.substring(0, 3).toUpperCase();
     }
 
     getSpreadClass(spread) {
@@ -883,7 +890,7 @@ class FuturesArbitrageScanner {
         if (newSymbol === this.currentSymbol) return;
         
         this.currentSymbol = newSymbol;
-        this.exchanges.clear();
+        this.sources.clear();
         this.priceHistory.clear();
         this.arbitrageOpportunities = [];
         
@@ -893,7 +900,7 @@ class FuturesArbitrageScanner {
         });
 
         this.updateChartTitle();
-        this.updateExchangeList();
+        this.updateSourceList();
         this.updateOpportunitiesTable();
         this.currentSpreads.clear();
         this.updateSpreadsMatrix();

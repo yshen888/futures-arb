@@ -46,7 +46,7 @@ func processKrakenOrderbook(productID string, orderBook *KrakenOrderBook, orderb
 
 	orderbookData := OrderbookData{
 		Symbol:    symbol,
-		Exchange:  "kraken_futures",
+		Source:    "kraken_futures",
 		BestBid:   bestBid,
 		BestAsk:   bestAsk,
 		Timestamp: time.Now().UnixMilli(),
@@ -87,7 +87,6 @@ func ConnectKrakenFutures(symbols []string, priceChan chan<- PriceData, orderboo
 				log.Printf("Kraken subscription error for %s: %v", krakenSymbol, err)
 				continue
 			}
-			log.Printf("Kraken subscribed to feed: book, product_id: %s", krakenSymbol)
 
 			// Initialize orderbook
 			orderbooks[krakenSymbol] = &KrakenOrderBook{
@@ -124,7 +123,6 @@ func ConnectKrakenFutures(symbols []string, priceChan chan<- PriceData, orderboo
 					// Initial snapshot
 					orderbook.Bids = data.Bids
 					orderbook.Asks = data.Asks
-					log.Printf("Kraken orderbook snapshot for %s: %d bids, %d asks", data.ProductID, len(data.Bids), len(data.Asks))
 				} else if feed == "book" {
 					// Incremental update
 					updateKrakenOrderbook(orderbook, data)

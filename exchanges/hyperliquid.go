@@ -134,7 +134,7 @@ func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData, ord
 
 					tradeData := TradeData{
 						Symbol:    symbol,
-						Exchange:  "hyperliquid_futures",
+						Source:    "hyperliquid_futures",
 						Price:     price,
 						Quantity:  trade.Size,
 						Side:      side,
@@ -169,7 +169,7 @@ func ConnectHyperliquidFutures(symbols []string, priceChan chan<- PriceData, ord
 
 					orderbookData := OrderbookData{
 						Symbol:    symbol,
-						Exchange:  "hyperliquid_futures",
+						Source:    "hyperliquid_futures",
 						BestBid:   bestBid,
 						BestAsk:   bestAsk,
 						Timestamp: l2BookData.Time,

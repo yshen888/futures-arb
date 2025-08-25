@@ -139,7 +139,6 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, orderbookC
 				
 				// Skip subscription confirmation messages
 				if wsMsg.Event == "subscribe" {
-					log.Printf("Gate.io subscription confirmed for channel: %s", wsMsg.Channel)
 					continue
 				}
 			}
@@ -173,7 +172,7 @@ func ConnectGateFutures(symbols []string, priceChan chan<- PriceData, orderbookC
 
 				orderbookData := OrderbookData{
 					Symbol:    standardSymbol,
-					Exchange:  "gate_futures",
+					Source:    "gate_futures",
 					BestBid:   bestBid,
 					BestAsk:   bestAsk,
 					Timestamp: timestamp,
