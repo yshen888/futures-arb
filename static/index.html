@@ -134,13 +134,13 @@
             border-color: #00ff88;
         }
 
-        .exchange-list {
+        .source-list {
             display: flex;
             flex-direction: column;
             gap: 2px;
         }
 
-        .exchange-item {
+        .source-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -150,24 +150,24 @@
             transition: background 0.2s;
         }
 
-        .exchange-item:hover {
+        .source-item:hover {
             background: rgba(34, 34, 34, 0.8);
         }
 
-        .exchange-name {
+        .source-name {
             color: #888;
             font-size: 9px;
             text-transform: uppercase;
         }
 
-        .exchange-color-dot {
+        .source-color-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             flex-shrink: 0;
         }
 
-        .exchange-price {
+        .source-price {
             font-weight: bold;
             color: #e0e0e0;
         }
@@ -334,7 +334,7 @@
             color: #ffaa44;
         }
 
-        .exchange-cell {
+        .source-cell {
             color: #ccc;
             font-size: 10px;
         }
@@ -603,10 +603,10 @@
             </div>
 
             <div class="panel">
-                <div class="panel-header">Exchanges</div>
+                <div class="panel-header">Sources</div>
                 <div class="panel-content">
-                    <div class="exchange-list" id="exchangeList">
-                        <div class="loading">Loading exchanges</div>
+                    <div class="source-list" id="sourceList">
+                        <div class="loading">Loading sources</div>
                     </div>
                 </div>
             </div>
@@ -637,9 +637,9 @@
                             <tr>
                                 <th class="sortable" data-sort="symbol">Symbol</th>
                                 <th class="sortable" data-sort="profit">Profit %</th>
-                                <th class="sortable" data-sort="buy_exchange">Buy</th>
+                                <th class="sortable" data-sort="buy_source">Buy</th>
                                 <th class="sortable" data-sort="buy_price">Buy $</th>
-                                <th class="sortable" data-sort="sell_exchange">Sell</th>
+                                <th class="sortable" data-sort="sell_source">Sell</th>
                                 <th class="sortable" data-sort="sell_price">Sell $</th>
                                 <th class="sortable" data-sort="timestamp">Time</th>
                             </tr>

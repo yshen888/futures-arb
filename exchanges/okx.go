@@ -131,7 +131,7 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookCh
 
 					tradeData := TradeData{
 						Symbol:    standardSymbol,
-						Exchange:  "okx_futures",
+						Source:    "okx_futures",
 						Price:     price,
 						Quantity:  trade.Size,
 						Side:      trade.Side, // OKX already provides "buy" or "sell"
@@ -169,7 +169,7 @@ func ConnectOKXFutures(symbols []string, priceChan chan<- PriceData, orderbookCh
 
 					orderbookData := OrderbookData{
 						Symbol:    standardSymbol,
-						Exchange:  "okx_futures",
+						Source:    "okx_futures",
 						BestBid:   bestBid,
 						BestAsk:   bestAsk,
 						Timestamp: timestamp,

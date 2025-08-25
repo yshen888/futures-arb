@@ -15,13 +15,13 @@ import (
 )
 
 type ArbitrageOpportunity struct {
-	Symbol       string  `json:"symbol"`
-	BuyExchange  string  `json:"buy_exchange"`
-	SellExchange string  `json:"sell_exchange"`
-	BuyPrice     float64 `json:"buy_price"`
-	SellPrice    float64 `json:"sell_price"`
-	ProfitPct    float64 `json:"profit_pct"`
-	Timestamp    int64   `json:"timestamp"`
+	Symbol     string  `json:"symbol"`
+	BuySource  string  `json:"buy_source"`
+	SellSource string  `json:"sell_source"`
+	BuyPrice   float64 `json:"buy_price"`
+	SellPrice  float64 `json:"sell_price"`
+	ProfitPct  float64 `json:"profit_pct"`
+	Timestamp  int64   `json:"timestamp"`
 }
 
 type FuturesScanner struct {
@@ -29,6 +29,7 @@ type FuturesScanner struct {
 	pricesMutex      sync.RWMutex
 	wsClients        map[*websocket.Conn]bool
 	clientsMutex     sync.RWMutex
+	wsWriteMutex     sync.Mutex // Protects WebSocket writes
 	upgrader         websocket.Upgrader
 	priceChan        chan exchanges.PriceData
 	orderbookChan    chan exchanges.OrderbookData
@@ -66,7 +67,7 @@ func (s *FuturesScanner) processOrderbooks() {
 		
 		priceData := exchanges.PriceData{
 			Symbol:    orderbookData.Symbol,
-			Exchange:  orderbookData.Exchange,
+			Source:    orderbookData.Source,
 			Price:     midPrice,
 			Timestamp: orderbookData.Timestamp,
 		}
@@ -87,7 +88,7 @@ func (s *FuturesScanner) updatePrice(data exchanges.PriceData) {
 	if s.prices[data.Symbol] == nil {
 		s.prices[data.Symbol] = make(map[string]float64)
 	}
-	s.prices[data.Symbol][data.Exchange] = data.Price
+	s.prices[data.Symbol][data.Source] = data.Price
 	s.pricesMutex.Unlock()
 
 	s.checkArbitrage(data.Symbol)
@@ -95,42 +96,48 @@ func (s *FuturesScanner) updatePrice(data exchanges.PriceData) {
 
 func (s *FuturesScanner) checkArbitrage(symbol string) {
 	s.pricesMutex.RLock()
-	exchangePrices, exists := s.prices[symbol]
-	if !exists || len(exchangePrices) < 2 {
+	sourcePrices, exists := s.prices[symbol]
+	if !exists || len(sourcePrices) < 2 {
 		s.pricesMutex.RUnlock()
 		return
 	}
 
+	// Create a copy of the prices map to avoid race conditions
+	pricesCopy := make(map[string]float64)
+	for source, price := range sourcePrices {
+		pricesCopy[source] = price
+	}
+	s.pricesMutex.RUnlock()
+
 	var minPrice, maxPrice float64
-	var minExchange, maxExchange string
+	var minSource, maxSource string
 	first := true
 
-	for exchange, price := range exchangePrices {
+	for source, price := range pricesCopy {
 		if first {
 			minPrice = price
 			maxPrice = price
-			minExchange = exchange
-			maxExchange = exchange
+			minSource = source
+			maxSource = source
 			first = false
 			continue
 		}
 
 		if price < minPrice {
 			minPrice = price
-			minExchange = exchange
+			minSource = source
 		}
 		if price > maxPrice {
 			maxPrice = price
-			maxExchange = exchange
+			maxSource = source
 		}
 	}
-	s.pricesMutex.RUnlock()
 
 	profitPct := ((maxPrice - minPrice) / minPrice) * 100
 
 	// Only alert if profit is significant (>0.05%) and we haven't alerted recently
 	if profitPct > 0.05 {
-		opportunityKey := fmt.Sprintf("%s_%s_%s", symbol, minExchange, maxExchange)
+		opportunityKey := fmt.Sprintf("%s_%s_%s", symbol, minSource, maxSource)
 		
 		s.opportunityMutex.RLock()
 		lastAlert, exists := s.lastOpportunity[opportunityKey]
@@ -145,55 +152,76 @@ func (s *FuturesScanner) checkArbitrage(symbol string) {
 			s.opportunityMutex.Unlock()
 
 			opportunity := ArbitrageOpportunity{
-				Symbol:       symbol,
-				BuyExchange:  minExchange,
-				SellExchange: maxExchange,
-				BuyPrice:     minPrice,
-				SellPrice:    maxPrice,
-				ProfitPct:    profitPct,
-				Timestamp:    now.UnixMilli(),
+				Symbol:     symbol,
+				BuySource:  minSource,
+				SellSource: maxSource,
+				BuyPrice:   minPrice,
+				SellPrice:  maxPrice,
+				ProfitPct:  profitPct,
+				Timestamp:  now.UnixMilli(),
 			}
 
 			s.broadcastOpportunity(opportunity)
 		}
 	}
 	
-	// Always broadcast current spreads for the spread matrix
-	s.broadcastSpreads(symbol, exchangePrices)
+	// Always broadcast current spreads for the spread matrix using the copy
+	s.broadcastSpreads(symbol, pricesCopy)
 }
 
 func (s *FuturesScanner) broadcastOpportunity(opportunity ArbitrageOpportunity) {
 	s.clientsMutex.RLock()
-	defer s.clientsMutex.RUnlock()
+	clients := make([]*websocket.Conn, 0, len(s.wsClients))
+	for client := range s.wsClients {
+		clients = append(clients, client)
+	}
+	s.clientsMutex.RUnlock()
 
 	message := map[string]interface{}{
 		"type":        "arbitrage",
 		"opportunity": opportunity,
 	}
 
-	for client := range s.wsClients {
+	s.wsWriteMutex.Lock()
+	defer s.wsWriteMutex.Unlock()
+
+	var toRemove []*websocket.Conn
+	for _, client := range clients {
 		err := client.WriteJSON(message)
 		if err != nil {
 			log.Printf("WebSocket write error: %v", err)
 			client.Close()
+			toRemove = append(toRemove, client)
+		}
+	}
+
+	// Remove failed clients
+	if len(toRemove) > 0 {
+		s.clientsMutex.Lock()
+		for _, client := range toRemove {
 			delete(s.wsClients, client)
 		}
+		s.clientsMutex.Unlock()
 	}
 }
 
-func (s *FuturesScanner) broadcastSpreads(symbol string, exchangePrices map[string]float64) {
+func (s *FuturesScanner) broadcastSpreads(symbol string, sourcePrices map[string]float64) {
 	s.clientsMutex.RLock()
-	defer s.clientsMutex.RUnlock()
+	clients := make([]*websocket.Conn, 0, len(s.wsClients))
+	for client := range s.wsClients {
+		clients = append(clients, client)
+	}
+	s.clientsMutex.RUnlock()
 
 	// Calculate all pairwise spreads
 	spreads := make(map[string]map[string]float64)
 	
-	for buyExchange, buyPrice := range exchangePrices {
-		spreads[buyExchange] = make(map[string]float64)
-		for sellExchange, sellPrice := range exchangePrices {
-			if buyExchange != sellExchange {
+	for buySource, buyPrice := range sourcePrices {
+		spreads[buySource] = make(map[string]float64)
+		for sellSource, sellPrice := range sourcePrices {
+			if buySource != sellSource {
 				spreadPct := ((sellPrice - buyPrice) / buyPrice) * 100
-				spreads[buyExchange][sellExchange] = spreadPct
+				spreads[buySource][sellSource] = spreadPct
 			}
 		}
 	}
@@ -202,16 +230,29 @@ func (s *FuturesScanner) broadcastSpreads(symbol string, exchangePrices map[stri
 		"type":    "spreads",
 		"symbol":  symbol,
 		"spreads": spreads,
-		"prices":  exchangePrices,
+		"prices":  sourcePrices,
 	}
 
-	for client := range s.wsClients {
+	s.wsWriteMutex.Lock()
+	defer s.wsWriteMutex.Unlock()
+
+	var toRemove []*websocket.Conn
+	for _, client := range clients {
 		err := client.WriteJSON(message)
 		if err != nil {
 			log.Printf("WebSocket write error: %v", err)
 			client.Close()
+			toRemove = append(toRemove, client)
+		}
+	}
+
+	// Remove failed clients
+	if len(toRemove) > 0 {
+		s.clientsMutex.Lock()
+		for _, client := range toRemove {
 			delete(s.wsClients, client)
 		}
+		s.clientsMutex.Unlock()
 	}
 }
 
@@ -237,16 +278,33 @@ func (s *FuturesScanner) broadcastPrices() {
 				"prices": pricesCopy,
 			}
 
-			s.clientsMutex.Lock()
+			s.clientsMutex.RLock()
+			clients := make([]*websocket.Conn, 0, len(s.wsClients))
 			for client := range s.wsClients {
+				clients = append(clients, client)
+			}
+			s.clientsMutex.RUnlock()
+
+			s.wsWriteMutex.Lock()
+			var toRemove []*websocket.Conn
+			for _, client := range clients {
 				err := client.WriteJSON(message)
 				if err != nil {
 					log.Printf("WebSocket write error: %v", err)
 					client.Close()
-					delete(s.wsClients, client)
+					toRemove = append(toRemove, client)
 				}
 			}
-			s.clientsMutex.Unlock()
+			s.wsWriteMutex.Unlock()
+
+			// Remove failed clients
+			if len(toRemove) > 0 {
+				s.clientsMutex.Lock()
+				for _, client := range toRemove {
+					delete(s.wsClients, client)
+				}
+				s.clientsMutex.Unlock()
+			}
 		}
 	}
 }
@@ -310,6 +368,9 @@ func main() {
 	// Start spot exchange connections with orderbook feeds
 	go exchanges.ConnectBinanceSpot(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
 	go exchanges.ConnectBybitSpot(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
+	
+	// Start Pyth price feed connection
+	go exchanges.ConnectPythPrices(symbols, scanner.priceChan, scanner.orderbookChan, scanner.tradeChan)
 
 	go scanner.broadcastPrices()
 

@@ -2,14 +2,14 @@ package exchanges
 
 type PriceData struct {
 	Symbol    string
-	Exchange  string
+	Source    string
 	Price     float64
 	Timestamp int64
 }
 
 type OrderbookData struct {
 	Symbol    string
-	Exchange  string
+	Source    string
 	BestBid   float64
 	BestAsk   float64
 	Timestamp int64
@@ -17,7 +17,7 @@ type OrderbookData struct {
 
 type TradeData struct {
 	Symbol    string
-	Exchange  string
+	Source    string
 	Price     float64
 	Quantity  string
 	Side      string // "buy" or "sell" (normalized)

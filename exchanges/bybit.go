@@ -88,7 +88,7 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, orderbook
 
 				orderbookData := OrderbookData{
 					Symbol:    orderbookMsg.Data.Symbol,
-					Exchange:  "bybit_futures",
+					Source:    "bybit_futures",
 					BestBid:   bidPrice,
 					BestAsk:   askPrice,
 					Timestamp: time.Now().UnixMilli(),
@@ -119,7 +119,7 @@ func ConnectBybitFutures(symbols []string, priceChan chan<- PriceData, orderbook
 
 					tradeData := TradeData{
 						Symbol:    trade.Symbol,
-						Exchange:  "bybit_futures",
+						Source:    "bybit_futures",
 						Price:     price,
 						Quantity:  trade.Size,
 						Side:      side,
@@ -215,7 +215,7 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, orderbookCha
 
 				orderbookData := OrderbookData{
 					Symbol:    orderbookMsg.Data.Symbol,
-					Exchange:  "bybit_spot",
+					Source:    "bybit_spot",
 					BestBid:   bidPrice,
 					BestAsk:   askPrice,
 					Timestamp: time.Now().UnixMilli(),
@@ -246,7 +246,7 @@ func ConnectBybitSpot(symbols []string, priceChan chan<- PriceData, orderbookCha
 
 					tradeData := TradeData{
 						Symbol:    trade.Symbol,
-						Exchange:  "bybit_spot",
+						Source:    "bybit_spot",
 						Price:     price,
 						Quantity:  trade.Size,
 						Side:      side,
