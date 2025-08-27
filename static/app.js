@@ -699,7 +699,9 @@ class FuturesArbitrageScanner {
         const stats = document.getElementById('opportunitiesStats');
         
         // Filter opportunities by profit and enabled sources
+        // YS: Only show opportunities for the current symbol
         const filteredOpportunities = this.arbitrageOpportunities.filter(opp =>
+            opp.symbol === this.currentSymbol &&
             opp.profit_pct >= this.minProfitFilter &&
             this.isSourceEnabled(opp.buy_source) &&
             this.isSourceEnabled(opp.sell_source)
